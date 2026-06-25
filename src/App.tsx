@@ -34,6 +34,7 @@ import {
   Users,
 } from "@phosphor-icons/react";
 import QRCode from "qrcode";
+import sgaLogo from "./assets/sga-logo.png";
 
 type Player = {
   id: string;
@@ -112,11 +113,12 @@ function Shell({
   return (
     <>
       <header>
-        <a href={logout ? "/admin" : "/"}>
-          <i>
-            <TennisBall weight="fill" />
-          </i>
-          SGA Sommerfest
+        <a className="brand" href={logout ? "/admin" : "/"}>
+          <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+          <span>
+            <strong>SGA Sommerfest</strong>
+            <small>SG Arheilgen Tennis</small>
+          </span>
         </a>
         {logout && (
           <Button variant="ghost" color="gray" onClick={logout}>
@@ -175,14 +177,15 @@ function Login({ done }: { done: () => void }) {
     <Shell>
       <div className="login">
         <section>
-          <Badge color="grass">Turnierleitung</Badge>
-          <h1>Alles auf Platz.</h1>
+          <Badge color="blue">Turnierleitung</Badge>
+          <h1>Sommerfest auf Platz.</h1>
           <p>
             Spieler eintragen, faire Doppel auslosen und Ergebnisse direkt
             festhalten.
           </p>
-          <div className="court">
-            <TennisBall weight="fill" />
+          <div className="login-brandmark" aria-hidden="true">
+            <img src={sgaLogo} alt="" />
+            <span>Teilnehmer warten</span>
           </div>
         </section>
         <form className="panel" onSubmit={submit}>
@@ -288,7 +291,15 @@ function Dashboard() {
       </div>
       {error && <p className="notice error">{error}</p>}
       {items === null ? (
-        <Loading />
+        error ? (
+          <Empty
+            icon={<Archive />}
+            title="Veranstaltungen konnten nicht geladen werden"
+            text={"Pr\u00fcfe die lokale Datenbankverbindung und versuche es erneut."}
+          />
+        ) : (
+          <Loading />
+        )
       ) : items.length === 0 ? (
         <Empty
           icon={<TennisBall />}
@@ -312,7 +323,7 @@ function Dashboard() {
                   {x.default_round_duration_seconds / 60} Minuten
                 </small>
               </span>
-              <Badge color={x.status === "archived" ? "gray" : "grass"}>
+              <Badge color={x.status === "archived" ? "gray" : "blue"}>
                 {x.status === "archived"
                   ? "Archiviert"
                   : x.status === "lobby"
@@ -362,6 +373,7 @@ function Leaderboard({
     </div>
   );
 }
+
 function QR({ url }: { url: string }) {
   const [img, setImg] = useState("");
   return (
@@ -371,7 +383,7 @@ function QR({ url }: { url: string }) {
         QRCode.toDataURL(url, {
           width: 420,
           margin: 2,
-          color: { dark: "#17351f", light: "#ffffff" },
+          color: { dark: "#0f3d78", light: "#ffffff" },
         }).then(setImg)
       }
     >
@@ -418,25 +430,27 @@ function MatchCard({
   const [a, setA] = useState(m.team_a_games ?? 0),
     [b, setB] = useState(m.team_b_games ?? 0);
   const n = (id: string) => (
-    <span>
+    <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
       {players.get(id)?.display_name}
     </span>
   );
   return (
-    <article className="match">
-      <header>
+    <article className="match court-card">
+      <header className="court-label">
         <b>Platz {m.court_number}</b>
-        {m.result_type === "played" && <Badge color="grass">Gespeichert</Badge>}
+        {m.result_type === "played" && <Badge color="blue">Gespeichert</Badge>}
       </header>
-      <div>
-        {n(m.team_a_player_1_id)}
-        {n(m.team_a_player_2_id)}
-      </div>
-      <small>gegen</small>
-      <div>
-        {n(m.team_b_player_1_id)}
-        {n(m.team_b_player_2_id)}
+      <div className="court-surface">
+        <div className="court-team court-team-a">
+          {n(m.team_a_player_1_id)}
+          {n(m.team_a_player_2_id)}
+        </div>
+        <small>gegen</small>
+        <div className="court-team court-team-b">
+          {n(m.team_b_player_1_id)}
+          {n(m.team_b_player_2_id)}
+        </div>
       </div>
       {result && (
         <footer>
@@ -493,7 +507,7 @@ function Clock({
   }, [round.id, round.state, round.expires_at]);
   if (["published", "results"].includes(round.state))
     return (
-      <Badge color={round.state === "results" ? "orange" : "grass"}>
+      <Badge color={round.state === "results" ? "orange" : "blue"}>
         {round.state === "results" ? "Ergebnisse" : "Bereit"}
       </Badge>
     );
@@ -597,7 +611,13 @@ function EventAdmin() {
   if (!data)
     return error ? <p className="notice error">{error}</p> : <Loading />;
   const round = data.currentRound,
-    pm = new Map(data.players.map((p) => [p.id, p]));
+    pm = new Map(data.players.map((p) => [p.id, p])),
+    activePlayers = data.players.filter((p) => p.active).length,
+    lobbyOpen = !round || round.state === "completed",
+    visibleLobbySlots = Math.max(
+      8,
+      Math.min(16, Math.max(courts * 4, data.players.length + 4)),
+    );
   const generate = () =>
     mutate(
       `/admin/events/${id}/generate`,
@@ -616,7 +636,7 @@ function EventAdmin() {
         method: "POST",
         body: JSON.stringify({ name: new FormData(f).get("name") }),
       },
-      "Spieler hinzugefügt.",
+      "Teilnehmer hinzugefügt.",
     );
     f.reset();
   }
@@ -643,7 +663,7 @@ function EventAdmin() {
           <Check /> {note}
         </p>
       )}
-      <div className="admin">
+      <div className={`admin${lobbyOpen ? " lobby-open" : ""}`}>
         <section className="panel stage">
           <div className="roundhead">
             <div>
@@ -664,9 +684,21 @@ function EventAdmin() {
               <Clock round={round} mutate={mutate} />
             )}
           </div>
-          {(!round ||
-            round.state === "completed" ||
-            round.state === "published") && (
+          <div className="lobby-status">
+            <img src={sgaLogo} alt="" />
+            <div>
+              <strong>
+                {round && round.state !== "completed"
+                  ? "Runde ist f\u00fcr die Teilnehmer sichtbar"
+                  : "Teilnehmer warten auf Paarungen"}
+              </strong>
+              <span>
+                Teilnehmer {activePlayers}/50 · {courts} Pl{"\u00e4"}tze · {duration}{" "}
+                Minuten
+              </span>
+            </div>
+          </div>
+          {(!round || round.state === "completed") && (
             <div className="settings">
               <label>
                 <span>
@@ -770,9 +802,12 @@ function EventAdmin() {
           )}
         </section>
         <aside>
-          <section className="panel">
+          <section className="panel participants">
             <div className="title">
-              <h2>Spielerlobby</h2>
+              <div>
+                <h2>Teilnehmer</h2>
+                <span className="title-note">Aktiv {activePlayers}/50</span>
+              </div>
               <Users />
             </div>
             <form className="add" onSubmit={add}>
@@ -781,7 +816,7 @@ function EventAdmin() {
                 placeholder="Vorname oder Spitzname"
                 required
               />
-              <IconButton type="submit" aria-label="Spieler hinzufügen">
+              <IconButton type="submit" aria-label="Teilnehmer hinzufügen">
                 <Plus />
               </IconButton>
             </form>
@@ -801,9 +836,18 @@ function EventAdmin() {
                   />
                 </div>
               ))}
+              {Array.from({
+                length: Math.max(0, visibleLobbySlots - data.players.length),
+              }).map((_, i) => (
+                <div key={`empty-${i}`} className="slot-empty">
+                  <i>+</i>
+                  <span>Leer</span>
+                  <small>Wartet auf Teilnehmer</small>
+                </div>
+              ))}
             </div>
           </section>
-          <section className="panel">
+          <section className="panel leaderboard-panel">
             <div className="title">
               <h2>Bestenliste</h2>
               <Trophy />
@@ -937,6 +981,15 @@ function PublicEvent() {
           <ArrowClockwise /> Aktualisieren
         </Button>
       </div>
+      {!data.currentRound && (
+        <div className="public-lobby">
+          <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+          <div>
+            <strong>Lobby ge{"\u00f6"}ffnet</strong>
+            <span>Warte auf die n{"\u00e4"}chsten Paarungen der Turnierleitung.</span>
+          </div>
+        </div>
+      )}
       <div className="public">
         <section className="panel">
           <div className="title">
