@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Navigate,
   Route,
@@ -26,8 +26,8 @@ import {
   Pause,
   Play,
   Plus,
+  SkipForward,
   SignOut,
-  Stop,
   TennisBall,
   Timer,
   Trophy,
@@ -64,6 +64,7 @@ type Round = {
   duration_seconds: number;
   expires_at: string | null;
   matches: Match[];
+  sitting_out_player_ids: string[];
 };
 type EventRow = {
   id: string;
@@ -81,6 +82,7 @@ type EventData = {
   rounds: Round[];
   currentRound: Round | null;
 };
+const scoreValues = [0, 1, 2, 3, 4, 5, 6];
 let csrf = "";
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -254,15 +256,6 @@ function Dashboard() {
                 <TextField.Root name="name" required />
               </label>
               <label>
-                Datum
-                <TextField.Root
-                  name="eventDate"
-                  type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  required
-                />
-              </label>
-              <label>
                 Rundendauer in Minuten
                 <TextField.Root
                   name="durationMinutes"
@@ -295,7 +288,9 @@ function Dashboard() {
           <Empty
             icon={<Archive />}
             title="Veranstaltungen konnten nicht geladen werden"
-            text={"Pr\u00fcfe die lokale Datenbankverbindung und versuche es erneut."}
+            text={
+              "Pr\u00fcfe die lokale Datenbankverbindung und versuche es erneut."
+            }
           />
         ) : (
           <Loading />
@@ -310,12 +305,6 @@ function Dashboard() {
         <div className="events">
           {items.map((x) => (
             <button key={x.id} onClick={() => nav(`/admin/events/${x.id}`)}>
-              <time>
-                {new Date(x.event_date + "T12:00").toLocaleDateString("de-DE", {
-                  day: "2-digit",
-                  month: "short",
-                })}
-              </time>
               <span>
                 <strong>{x.name}</strong>
                 <small>
@@ -425,10 +414,54 @@ function MatchCard({
   m: Match;
   players: Map<string, Player>;
   result: boolean;
-  save: (a: number, b: number) => void;
+  save: (a: number, b: number) => Promise<void>;
 }) {
-  const [a, setA] = useState(m.team_a_games ?? 0),
-    [b, setB] = useState(m.team_b_games ?? 0);
+  const initialSaved =
+    m.result_type === "played" &&
+    m.team_a_games !== null &&
+    m.team_b_games !== null
+      ? `${m.team_a_games}:${m.team_b_games}`
+      : "";
+  const [a, setA] = useState<number | null>(m.team_a_games),
+    [b, setB] = useState<number | null>(m.team_b_games),
+    [saving, setSaving] = useState(false),
+    [failedKey, setFailedKey] = useState(""),
+    [lastSaved, setLastSaved] = useState(initialSaved);
+  const currentKey = a !== null && b !== null ? `${a}:${b}` : "";
+  const canSave = a !== null && b !== null && a !== b;
+  const saved = canSave && currentKey === lastSaved;
+  const failed = currentKey !== "" && currentKey === failedKey;
+  useEffect(() => {
+    setA(m.team_a_games);
+    setB(m.team_b_games);
+    setLastSaved(
+      m.result_type === "played" &&
+        m.team_a_games !== null &&
+        m.team_b_games !== null
+        ? `${m.team_a_games}:${m.team_b_games}`
+        : "",
+    );
+    setFailedKey("");
+  }, [m.id, m.team_a_games, m.team_b_games, m.result_type]);
+  useEffect(() => {
+    if (
+      !canSave ||
+      a === null ||
+      b === null ||
+      currentKey === lastSaved ||
+      currentKey === failedKey ||
+      saving
+    )
+      return;
+    setSaving(true);
+    save(a, b)
+      .then(() => {
+        setLastSaved(currentKey);
+        setFailedKey("");
+      })
+      .catch(() => setFailedKey(currentKey))
+      .finally(() => setSaving(false));
+  }, [a, b, canSave, currentKey, failedKey, lastSaved, save, saving]);
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
@@ -441,42 +474,134 @@ function MatchCard({
         <b>Platz {m.court_number}</b>
         {m.result_type === "played" && <Badge color="blue">Gespeichert</Badge>}
       </header>
-      <div className="court-surface">
-        <div className="court-team court-team-a">
-          {n(m.team_a_player_1_id)}
-          {n(m.team_a_player_2_id)}
+      <div className="match-board">
+        <div className="score-team">
+          <div className="team-players">
+            {n(m.team_a_player_1_id)}
+            {n(m.team_a_player_2_id)}
+          </div>
         </div>
-        <small>gegen</small>
-        <div className="court-team court-team-b">
-          {n(m.team_b_player_1_id)}
-          {n(m.team_b_player_2_id)}
+        <div
+          className="score-versus"
+          aria-label={`Spielstand ${a ?? "-"} zu ${b ?? "-"}`}
+        >
+          <strong>
+            {a ?? "-"}:{b ?? "-"}
+          </strong>
+        </div>
+        <div className="score-team">
+          <div className="team-players">
+            {n(m.team_b_player_1_id)}
+            {n(m.team_b_player_2_id)}
+          </div>
         </div>
       </div>
       {result && (
         <footer>
-          <TextField.Root
-            type="number"
-            min="0"
-            value={a}
-            onChange={(e) => setA(+e.target.value)}
-          />
-          <b>:</b>
-          <TextField.Root
-            type="number"
-            min="0"
-            value={b}
-            onChange={(e) => setB(+e.target.value)}
-          />
+          <ScorePicker label="Team links" value={a} onChange={setA} />
+          <b className="score-divider">:</b>
+          <ScorePicker label="Team rechts" value={b} onChange={setB} />
           <IconButton
             aria-label="Ergebnis speichern"
-            disabled={a === b}
-            onClick={() => save(a, b)}
+            color={canSave ? "blue" : "gray"}
+            variant={canSave ? "solid" : "soft"}
+            disabled={!canSave || saving}
+            onClick={() => {
+              if (a !== null && b !== null && canSave)
+                void save(a, b)
+                  .then(() => {
+                    setLastSaved(currentKey);
+                    setFailedKey("");
+                  })
+                  .catch(() => setFailedKey(currentKey));
+            }}
           >
             <Check />
           </IconButton>
+          <small
+            className={
+              saved
+                ? "save-state saved"
+                : failed
+                  ? "save-state failed"
+                  : "save-state"
+            }
+          >
+            {saved
+              ? "Gespeichert"
+              : failed
+                ? "Speichern fehlgeschlagen"
+                : canSave
+                  ? "Speichert automatisch"
+                  : "Beide Teams wählen"}
+          </small>
         </footer>
       )}
     </article>
+  );
+}
+
+function ScorePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  const [customOpen, setCustomOpen] = useState((value ?? 0) > 6);
+  useEffect(() => {
+    if ((value ?? 0) > 6) setCustomOpen(true);
+  }, [value]);
+  return (
+    <div className="score-entry" aria-label={label}>
+      <div className="score-picker">
+        {scoreValues.map((score) => (
+          <button
+            key={score}
+            type="button"
+            className={
+              value === score ? "score-number selected" : "score-number"
+            }
+            aria-pressed={value === score}
+            onClick={() => onChange(score)}
+          >
+            {score}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={
+            (value ?? 0) > 6 ? "score-number selected" : "score-number"
+          }
+          aria-label={`${label}: mehr als 6 eintragen`}
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          <Plus weight="bold" />
+        </button>
+      </div>
+      {customOpen && (
+        <TextField.Root
+          type="number"
+          min="7"
+          inputMode="numeric"
+          placeholder="7+"
+          value={value !== null && value > 6 ? String(value) : ""}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (!next) {
+              onChange(null);
+              return;
+            }
+            const parsed = Number(next);
+            if (!Number.isFinite(parsed)) return;
+            onChange(Math.max(7, Math.floor(parsed)));
+          }}
+        />
+      )}
+    </div>
   );
 }
 function Clock({
@@ -547,17 +672,17 @@ function Clock({
           </IconButton>
         )}
         <IconButton
-          color="red"
+          color="orange"
           variant="soft"
-          aria-label="Runde beenden"
+          aria-label="Runde skippen"
           onClick={() =>
             mutate(`/admin/rounds/${round.id}/action`, {
               method: "POST",
-              body: JSON.stringify({ action: "end" }),
+              body: JSON.stringify({ action: "skip" }),
             })
           }
         >
-          <Stop />
+          <SkipForward />
         </IconButton>
       </Flex>
     </div>
@@ -612,7 +737,13 @@ function EventAdmin() {
     return error ? <p className="notice error">{error}</p> : <Loading />;
   const round = data.currentRound,
     pm = new Map(data.players.map((p) => [p.id, p])),
+    sittingOutPlayers =
+      round?.sitting_out_player_ids
+        .map((playerId) => pm.get(playerId))
+        .filter((player): player is Player => Boolean(player)) ?? [],
+    participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
+    rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     visibleLobbySlots = Math.max(
       8,
@@ -648,12 +779,6 @@ function EventAdmin() {
             Zur Übersicht
           </Button>
           <h1>{data.event.name}</h1>
-          <p>
-            {new Date(data.event.event_date + "T12:00").toLocaleDateString(
-              "de-DE",
-              { dateStyle: "long" },
-            )}
-          </p>
         </div>
         <QR url={`${location.origin}/event/${data.event.public_slug}`} />
       </div>
@@ -693,8 +818,8 @@ function EventAdmin() {
                   : "Teilnehmer warten auf Paarungen"}
               </strong>
               <span>
-                Teilnehmer {activePlayers}/50 · {courts} Pl{"\u00e4"}tze · {duration}{" "}
-                Minuten
+                Teilnehmer {participantCount} · {courts} Pl{"\u00e4"}tze ·{" "}
+                {duration} Minuten
               </span>
             </div>
           </div>
@@ -762,26 +887,44 @@ function EventAdmin() {
             </Flex>
           )}{" "}
           {round && round.state !== "completed" && (
-            <div className="matches">
-              {round.matches.map((m) => (
-                <MatchCard
-                  key={m.id}
-                  m={m}
-                  players={pm}
-                  result={round.state === "results"}
-                  save={(a, b) =>
-                    mutate(
-                      `/admin/matches/${m.id}/result`,
-                      {
-                        method: "PUT",
-                        body: JSON.stringify({ teamAGames: a, teamBGames: b }),
-                      },
-                      "Ergebnis gespeichert.",
-                    )
-                  }
-                />
-              ))}
-            </div>
+            <>
+              {sittingOutPlayers.length > 0 && (
+                <div className="sitting-out">
+                  <strong>Setzen diese Runde aus</strong>
+                  <div>
+                    {sittingOutPlayers.map((player) => (
+                      <span key={player.id}>
+                        <i>{player.emoji}</i>
+                        {player.display_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="matches">
+                {round.matches.map((m) => (
+                  <MatchCard
+                    key={m.id}
+                    m={m}
+                    players={pm}
+                    result={round.state === "results"}
+                    save={(a, b) =>
+                      mutate(
+                        `/admin/matches/${m.id}/result`,
+                        {
+                          method: "PUT",
+                          body: JSON.stringify({
+                            teamAGames: a,
+                            teamBGames: b,
+                          }),
+                        },
+                        "Ergebnis gespeichert.",
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </>
           )}
           {round?.state === "results" && (
             <Button
@@ -806,7 +949,9 @@ function EventAdmin() {
             <div className="title">
               <div>
                 <h2>Teilnehmer</h2>
-                <span className="title-note">Aktiv {activePlayers}/50</span>
+                <span className="title-note">
+                  Teilnehmer {participantCount}
+                </span>
               </div>
               <Users />
             </div>
@@ -821,7 +966,7 @@ function EventAdmin() {
               </IconButton>
             </form>
             <div className="players">
-              {data.players.map((p) => (
+              {rankedPlayers.map((p) => (
                 <div key={p.id} className={!p.active ? "off" : ""}>
                   <i>{p.emoji}</i>
                   <span>{p.display_name}</span>
@@ -837,7 +982,7 @@ function EventAdmin() {
                 </div>
               ))}
               {Array.from({
-                length: Math.max(0, visibleLobbySlots - data.players.length),
+                length: Math.max(0, visibleLobbySlots - rankedPlayers.length),
               }).map((_, i) => (
                 <div key={`empty-${i}`} className="slot-empty">
                   <i>+</i>
@@ -881,6 +1026,7 @@ function PublicEvent() {
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState(""),
     [selected, setSelected] = useState("");
+  const detailRef = useRef<HTMLElement>(null);
   const load = () =>
     api<EventData>(`/public/events/${slug}`)
       .then(setData)
@@ -888,6 +1034,15 @@ function PublicEvent() {
   useEffect(() => {
     void load();
   }, [slug]);
+  useEffect(() => {
+    if (!selected) return;
+    detailRef.current?.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [selected]);
   const match = useMemo(
     () =>
       data?.currentRound?.matches.find((m) =>
@@ -912,21 +1067,48 @@ function PublicEvent() {
         <Loading />
       </Shell>
     );
+  const currentRound = data.currentRound;
+  const selectedPlayer = data.players.find((x) => x.id === selected);
   const p = (id: string) => data.players.find((x) => x.id === id)!;
   let detail = (
-    <Empty
-      icon={<TennisBall />}
-      title="Spieler auswählen"
-      text="Tippe in der Bestenliste auf einen Namen."
-    />
+    <div className="public-state">
+      <b>
+        <TennisBall />
+      </b>
+      <h2>Wer bist du?</h2>
+      <p>
+        Tippe unten deinen Namen an. Danach siehst du sofort Platz, Partner und
+        Gegner.
+      </p>
+    </div>
   );
-  if (selected && !match)
+  if (selectedPlayer && !currentRound)
     detail = (
-      <Empty
-        icon={<Timer />}
-        title="Diese Runde aussetzen"
-        text="Der Spieler ist in dieser Runde nicht auf einem Platz."
-      />
+      <div className="public-state calm">
+        <b>
+          <Timer />
+        </b>
+        <p className="public-playerline">
+          <i>{selectedPlayer.emoji}</i>
+          <strong>{selectedPlayer.display_name}</strong>
+        </p>
+        <h2>Noch keine Paarung</h2>
+        <p>Die Turnierleitung bereitet die nächste Runde vor.</p>
+      </div>
+    );
+  if (selectedPlayer && currentRound && !match)
+    detail = (
+      <div className="public-state rest">
+        <b>
+          <Timer />
+        </b>
+        <p className="public-playerline">
+          <i>{selectedPlayer.emoji}</i>
+          <strong>{selectedPlayer.display_name}</strong>
+        </p>
+        <h2>Du setzt diese Runde aus</h2>
+        <p>Kurz durchatmen. Bei der nächsten Runde wieder reinschauen.</p>
+      </div>
     );
   if (match) {
     const ids = [
@@ -942,67 +1124,84 @@ function PublicEvent() {
       opps = (a ? ids.slice(2) : ids.slice(0, 2)).map(p);
     detail = (
       <div className="assignment">
-        <p>Platz {match.court_number}</p>
-        <h2>
-          {p(selected).emoji} {p(selected).display_name}
-        </h2>
-        <span>
-          Partner
-          <strong>
-            {partner.emoji} {partner.display_name}
-          </strong>
-        </span>
-        <span>
-          Gegner
-          <strong>
-            {opps.map((x) => (
-              <i key={x.id}>
-                {x.emoji} {x.display_name}
-              </i>
-            ))}
-          </strong>
-        </span>
+        <div className="assignment-court">
+          <span>Platz</span>
+          <strong>{match.court_number}</strong>
+        </div>
+        <div className="assignment-player">
+          <span>Du spielst</span>
+          <h2>
+            {p(selected).emoji} {p(selected).display_name}
+          </h2>
+        </div>
+        <div className="assignment-info">
+          <section>
+            <span>Partner</span>
+            <strong>
+              {partner.emoji} {partner.display_name}
+            </strong>
+          </section>
+          <section>
+            <span>Gegner</span>
+            <strong>
+              {opps.map((x) => (
+                <i key={x.id}>
+                  {x.emoji} {x.display_name}
+                </i>
+              ))}
+            </strong>
+          </section>
+        </div>
       </div>
     );
   }
   return (
     <Shell>
-      <div className="heading">
-        <div>
-          <p className="kicker">
-            {data.currentRound
-              ? `Runde ${data.currentRound.round_number}`
-              : "Lobby"}
-          </p>
-          <h1>{data.event.name}</h1>
-          <p>Bestenliste und aktuelle Platzbelegung</p>
-        </div>
-        <Button variant="soft" onClick={load}>
-          <ArrowClockwise /> Aktualisieren
-        </Button>
-      </div>
-      {!data.currentRound && (
-        <div className="public-lobby">
-          <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+      <div className="public-screen">
+        <div className="heading public-hero">
           <div>
-            <strong>Lobby ge{"\u00f6"}ffnet</strong>
-            <span>Warte auf die n{"\u00e4"}chsten Paarungen der Turnierleitung.</span>
+            <p className="kicker">
+              {currentRound ? `Runde ${currentRound.round_number}` : "Lobby"}
+            </p>
+            <h1>{data.event.name}</h1>
+            <p>
+              {selectedPlayer
+                ? `${selectedPlayer.emoji} ${selectedPlayer.display_name}`
+                : "Namen antippen, Zuweisung sehen"}
+            </p>
           </div>
+          <Button className="public-refresh" variant="soft" onClick={load}>
+            <ArrowClockwise /> Aktualisieren
+          </Button>
         </div>
-      )}
-      <div className="public">
-        <section className="panel">
-          <div className="title">
-            <h2>Bestenliste</h2>
-            <Trophy />
+        {!currentRound && (
+          <div className="public-lobby">
+            <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+            <div>
+              <strong>Lobby ge{"\u00f6"}ffnet</strong>
+              <span>Die n{"\u00e4"}chsten Paarungen erscheinen hier.</span>
+            </div>
           </div>
-          <Leaderboard
-            players={data.leaderboard}
-            selected={selected}
-            onSelect={setSelected}
-          />
-        </section>
-        <section className="panel detail">{detail}</section>
+        )}
+        <div className="public">
+          <section className="panel detail" ref={detailRef} aria-live="polite">
+            {detail}
+          </section>
+          <section className="panel public-rank-panel">
+            <div className="title">
+              <div>
+                <h2>Bestenliste</h2>
+                <span className="title-note">Tippe deinen Namen an</span>
+              </div>
+              <Trophy />
+            </div>
+            <Leaderboard
+              players={data.leaderboard}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </section>
+        </div>
       </div>
     </Shell>
   );
