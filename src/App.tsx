@@ -26,8 +26,8 @@ import {
   Pause,
   Play,
   Plus,
+  SkipForward,
   SignOut,
-  Stop,
   TennisBall,
   Timer,
   Trophy,
@@ -81,6 +81,7 @@ type EventData = {
   rounds: Round[];
   currentRound: Round | null;
 };
+const scoreValues = [0, 1, 2, 3, 4, 5, 6];
 let csrf = "";
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -254,15 +255,6 @@ function Dashboard() {
                 <TextField.Root name="name" required />
               </label>
               <label>
-                Datum
-                <TextField.Root
-                  name="eventDate"
-                  type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  required
-                />
-              </label>
-              <label>
                 Rundendauer in Minuten
                 <TextField.Root
                   name="durationMinutes"
@@ -295,7 +287,9 @@ function Dashboard() {
           <Empty
             icon={<Archive />}
             title="Veranstaltungen konnten nicht geladen werden"
-            text={"Pr\u00fcfe die lokale Datenbankverbindung und versuche es erneut."}
+            text={
+              "Pr\u00fcfe die lokale Datenbankverbindung und versuche es erneut."
+            }
           />
         ) : (
           <Loading />
@@ -310,12 +304,6 @@ function Dashboard() {
         <div className="events">
           {items.map((x) => (
             <button key={x.id} onClick={() => nav(`/admin/events/${x.id}`)}>
-              <time>
-                {new Date(x.event_date + "T12:00").toLocaleDateString("de-DE", {
-                  day: "2-digit",
-                  month: "short",
-                })}
-              </time>
               <span>
                 <strong>{x.name}</strong>
                 <small>
@@ -425,10 +413,54 @@ function MatchCard({
   m: Match;
   players: Map<string, Player>;
   result: boolean;
-  save: (a: number, b: number) => void;
+  save: (a: number, b: number) => Promise<void>;
 }) {
-  const [a, setA] = useState(m.team_a_games ?? 0),
-    [b, setB] = useState(m.team_b_games ?? 0);
+  const initialSaved =
+    m.result_type === "played" &&
+    m.team_a_games !== null &&
+    m.team_b_games !== null
+      ? `${m.team_a_games}:${m.team_b_games}`
+      : "";
+  const [a, setA] = useState<number | null>(m.team_a_games),
+    [b, setB] = useState<number | null>(m.team_b_games),
+    [saving, setSaving] = useState(false),
+    [failedKey, setFailedKey] = useState(""),
+    [lastSaved, setLastSaved] = useState(initialSaved);
+  const currentKey = a !== null && b !== null ? `${a}:${b}` : "";
+  const canSave = a !== null && b !== null && a !== b;
+  const saved = canSave && currentKey === lastSaved;
+  const failed = currentKey !== "" && currentKey === failedKey;
+  useEffect(() => {
+    setA(m.team_a_games);
+    setB(m.team_b_games);
+    setLastSaved(
+      m.result_type === "played" &&
+        m.team_a_games !== null &&
+        m.team_b_games !== null
+        ? `${m.team_a_games}:${m.team_b_games}`
+        : "",
+    );
+    setFailedKey("");
+  }, [m.id, m.team_a_games, m.team_b_games, m.result_type]);
+  useEffect(() => {
+    if (
+      !canSave ||
+      a === null ||
+      b === null ||
+      currentKey === lastSaved ||
+      currentKey === failedKey ||
+      saving
+    )
+      return;
+    setSaving(true);
+    save(a, b)
+      .then(() => {
+        setLastSaved(currentKey);
+        setFailedKey("");
+      })
+      .catch(() => setFailedKey(currentKey))
+      .finally(() => setSaving(false));
+  }, [a, b, canSave, currentKey, failedKey, lastSaved, save, saving]);
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
@@ -454,29 +486,77 @@ function MatchCard({
       </div>
       {result && (
         <footer>
-          <TextField.Root
-            type="number"
-            min="0"
-            value={a}
-            onChange={(e) => setA(+e.target.value)}
-          />
-          <b>:</b>
-          <TextField.Root
-            type="number"
-            min="0"
-            value={b}
-            onChange={(e) => setB(+e.target.value)}
-          />
+          <ScorePicker label="Team oben" value={a} onChange={setA} />
+          <b className="score-divider">:</b>
+          <ScorePicker label="Team unten" value={b} onChange={setB} />
           <IconButton
             aria-label="Ergebnis speichern"
-            disabled={a === b}
-            onClick={() => save(a, b)}
+            color={canSave ? "blue" : "gray"}
+            variant={canSave ? "solid" : "soft"}
+            disabled={!canSave || saving}
+            onClick={() => {
+              if (a !== null && b !== null && canSave)
+                void save(a, b)
+                  .then(() => {
+                    setLastSaved(currentKey);
+                    setFailedKey("");
+                  })
+                  .catch(() => setFailedKey(currentKey));
+            }}
           >
             <Check />
           </IconButton>
+          <small
+            className={
+              saved
+                ? "save-state saved"
+                : failed
+                  ? "save-state failed"
+                  : "save-state"
+            }
+          >
+            {saved
+              ? "Gespeichert"
+              : failed
+                ? "Speichern fehlgeschlagen"
+                : canSave
+                  ? "Speichert automatisch"
+                  : "Beide Teams wählen"}
+          </small>
         </footer>
       )}
     </article>
+  );
+}
+
+function ScorePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="score-entry" aria-label={label}>
+      <span>{label}</span>
+      <div className="score-picker">
+        {scoreValues.map((score) => (
+          <button
+            key={score}
+            type="button"
+            className={
+              value === score ? "score-number selected" : "score-number"
+            }
+            aria-pressed={value === score}
+            onClick={() => onChange(score)}
+          >
+            {score}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 function Clock({
@@ -547,17 +627,17 @@ function Clock({
           </IconButton>
         )}
         <IconButton
-          color="red"
+          color="orange"
           variant="soft"
-          aria-label="Runde beenden"
+          aria-label="Runde skippen"
           onClick={() =>
             mutate(`/admin/rounds/${round.id}/action`, {
               method: "POST",
-              body: JSON.stringify({ action: "end" }),
+              body: JSON.stringify({ action: "skip" }),
             })
           }
         >
-          <Stop />
+          <SkipForward />
         </IconButton>
       </Flex>
     </div>
@@ -612,7 +692,9 @@ function EventAdmin() {
     return error ? <p className="notice error">{error}</p> : <Loading />;
   const round = data.currentRound,
     pm = new Map(data.players.map((p) => [p.id, p])),
+    participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
+    rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     visibleLobbySlots = Math.max(
       8,
@@ -648,12 +730,6 @@ function EventAdmin() {
             Zur Übersicht
           </Button>
           <h1>{data.event.name}</h1>
-          <p>
-            {new Date(data.event.event_date + "T12:00").toLocaleDateString(
-              "de-DE",
-              { dateStyle: "long" },
-            )}
-          </p>
         </div>
         <QR url={`${location.origin}/event/${data.event.public_slug}`} />
       </div>
@@ -693,8 +769,8 @@ function EventAdmin() {
                   : "Teilnehmer warten auf Paarungen"}
               </strong>
               <span>
-                Teilnehmer {activePlayers}/50 · {courts} Pl{"\u00e4"}tze · {duration}{" "}
-                Minuten
+                Teilnehmer {participantCount} · {courts} Pl{"\u00e4"}tze ·{" "}
+                {duration} Minuten
               </span>
             </div>
           </div>
@@ -806,7 +882,9 @@ function EventAdmin() {
             <div className="title">
               <div>
                 <h2>Teilnehmer</h2>
-                <span className="title-note">Aktiv {activePlayers}/50</span>
+                <span className="title-note">
+                  Teilnehmer {participantCount}
+                </span>
               </div>
               <Users />
             </div>
@@ -821,7 +899,7 @@ function EventAdmin() {
               </IconButton>
             </form>
             <div className="players">
-              {data.players.map((p) => (
+              {rankedPlayers.map((p) => (
                 <div key={p.id} className={!p.active ? "off" : ""}>
                   <i>{p.emoji}</i>
                   <span>{p.display_name}</span>
@@ -837,7 +915,7 @@ function EventAdmin() {
                 </div>
               ))}
               {Array.from({
-                length: Math.max(0, visibleLobbySlots - data.players.length),
+                length: Math.max(0, visibleLobbySlots - rankedPlayers.length),
               }).map((_, i) => (
                 <div key={`empty-${i}`} className="slot-empty">
                   <i>+</i>
@@ -986,7 +1064,9 @@ function PublicEvent() {
           <img src={sgaLogo} alt="SG Arheilgen Tennis" />
           <div>
             <strong>Lobby ge{"\u00f6"}ffnet</strong>
-            <span>Warte auf die n{"\u00e4"}chsten Paarungen der Turnierleitung.</span>
+            <span>
+              Warte auf die n{"\u00e4"}chsten Paarungen der Turnierleitung.
+            </span>
           </div>
         </div>
       )}
