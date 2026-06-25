@@ -21,7 +21,10 @@ const encoder = new TextEncoder();
 
 const eventInput = z.object({
   name: z.string().trim().min(1).max(100),
-  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  eventDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   durationMinutes: z.coerce.number().int().min(1).max(240),
   courtCount: z.coerce.number().int().min(1).max(13),
 });
@@ -357,7 +360,7 @@ admin.post("/events", async (c) => {
       eventId,
       slug,
       input.data.name,
-      input.data.eventDate,
+      input.data.eventDate ?? timestamp.slice(0, 10),
       input.data.durationMinutes * 60,
       input.data.courtCount,
       timestamp,
@@ -426,9 +429,8 @@ admin.post("/events/:id/players", async (c) => {
       )
     ).map((row) => String(row.emoji)),
   );
-  const emoji = emojis.find((candidate) => !used.has(candidate));
-  if (!emoji)
-    return c.json({ error: "Die maximale Spielerzahl ist erreicht." }, 400);
+  const emoji =
+    emojis.find((candidate) => !used.has(candidate)) ?? `🎾${used.size + 1}`;
   const timestamp = now();
   await c.env.DB.prepare(
     "INSERT INTO players (id, event_id, display_name, emoji, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -600,7 +602,7 @@ admin.post("/events/:id/generate", async (c) => {
 
 admin.post("/rounds/:id/action", async (c) => {
   const input = z
-    .object({ action: z.enum(["start", "pause", "resume", "end"]) })
+    .object({ action: z.enum(["start", "pause", "resume", "end", "skip"]) })
     .safeParse(await c.req.json().catch(() => ({})));
   if (!input.success) return c.json({ error: "Ungültige Rundenaktion." }, 400);
   const round = await c.env.DB.prepare("SELECT * FROM rounds WHERE id = ?")
@@ -634,7 +636,7 @@ admin.post("/rounds/:id/action", async (c) => {
       .bind(Math.round(pauseMs / 1000), expires, round.id)
       .run();
   } else if (
-    input.data.action === "end" &&
+    ["end", "skip"].includes(input.data.action) &&
     ["running", "paused"].includes(String(round.state))
   ) {
     await c.env.DB.prepare(
@@ -653,8 +655,8 @@ admin.post("/rounds/:id/action", async (c) => {
 admin.put("/matches/:id/result", async (c) => {
   const input = z
     .object({
-      teamAGames: z.coerce.number().int().min(0),
-      teamBGames: z.coerce.number().int().min(0),
+      teamAGames: z.coerce.number().int().min(0).max(6),
+      teamBGames: z.coerce.number().int().min(0).max(6),
     })
     .safeParse(await c.req.json().catch(() => ({})));
   if (!input.success || input.data.teamAGames === input.data.teamBGames)
