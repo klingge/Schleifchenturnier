@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Navigate,
   Route,
@@ -64,6 +64,7 @@ type Round = {
   duration_seconds: number;
   expires_at: string | null;
   matches: Match[];
+  sitting_out_player_ids: string[];
 };
 type EventRow = {
   id: string;
@@ -473,22 +474,33 @@ function MatchCard({
         <b>Platz {m.court_number}</b>
         {m.result_type === "played" && <Badge color="blue">Gespeichert</Badge>}
       </header>
-      <div className="court-surface">
-        <div className="court-team court-team-a">
-          {n(m.team_a_player_1_id)}
-          {n(m.team_a_player_2_id)}
+      <div className="match-board">
+        <div className="score-team">
+          <div className="team-players">
+            {n(m.team_a_player_1_id)}
+            {n(m.team_a_player_2_id)}
+          </div>
         </div>
-        <small>gegen</small>
-        <div className="court-team court-team-b">
-          {n(m.team_b_player_1_id)}
-          {n(m.team_b_player_2_id)}
+        <div
+          className="score-versus"
+          aria-label={`Spielstand ${a ?? "-"} zu ${b ?? "-"}`}
+        >
+          <strong>
+            {a ?? "-"}:{b ?? "-"}
+          </strong>
+        </div>
+        <div className="score-team">
+          <div className="team-players">
+            {n(m.team_b_player_1_id)}
+            {n(m.team_b_player_2_id)}
+          </div>
         </div>
       </div>
       {result && (
         <footer>
-          <ScorePicker label="Team oben" value={a} onChange={setA} />
+          <ScorePicker label="Team links" value={a} onChange={setA} />
           <b className="score-divider">:</b>
-          <ScorePicker label="Team unten" value={b} onChange={setB} />
+          <ScorePicker label="Team rechts" value={b} onChange={setB} />
           <IconButton
             aria-label="Ergebnis speichern"
             color={canSave ? "blue" : "gray"}
@@ -536,11 +548,14 @@ function ScorePicker({
 }: {
   label: string;
   value: number | null;
-  onChange: (value: number) => void;
+  onChange: (value: number | null) => void;
 }) {
+  const [customOpen, setCustomOpen] = useState((value ?? 0) > 6);
+  useEffect(() => {
+    if ((value ?? 0) > 6) setCustomOpen(true);
+  }, [value]);
   return (
     <div className="score-entry" aria-label={label}>
-      <span>{label}</span>
       <div className="score-picker">
         {scoreValues.map((score) => (
           <button
@@ -555,7 +570,37 @@ function ScorePicker({
             {score}
           </button>
         ))}
+        <button
+          type="button"
+          className={
+            (value ?? 0) > 6 ? "score-number selected" : "score-number"
+          }
+          aria-label={`${label}: mehr als 6 eintragen`}
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          <Plus weight="bold" />
+        </button>
       </div>
+      {customOpen && (
+        <TextField.Root
+          type="number"
+          min="7"
+          inputMode="numeric"
+          placeholder="7+"
+          value={value !== null && value > 6 ? String(value) : ""}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (!next) {
+              onChange(null);
+              return;
+            }
+            const parsed = Number(next);
+            if (!Number.isFinite(parsed)) return;
+            onChange(Math.max(7, Math.floor(parsed)));
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -692,6 +737,10 @@ function EventAdmin() {
     return error ? <p className="notice error">{error}</p> : <Loading />;
   const round = data.currentRound,
     pm = new Map(data.players.map((p) => [p.id, p])),
+    sittingOutPlayers =
+      round?.sitting_out_player_ids
+        .map((playerId) => pm.get(playerId))
+        .filter((player): player is Player => Boolean(player)) ?? [],
     participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
     rankedPlayers = data.leaderboard,
@@ -838,26 +887,44 @@ function EventAdmin() {
             </Flex>
           )}{" "}
           {round && round.state !== "completed" && (
-            <div className="matches">
-              {round.matches.map((m) => (
-                <MatchCard
-                  key={m.id}
-                  m={m}
-                  players={pm}
-                  result={round.state === "results"}
-                  save={(a, b) =>
-                    mutate(
-                      `/admin/matches/${m.id}/result`,
-                      {
-                        method: "PUT",
-                        body: JSON.stringify({ teamAGames: a, teamBGames: b }),
-                      },
-                      "Ergebnis gespeichert.",
-                    )
-                  }
-                />
-              ))}
-            </div>
+            <>
+              {sittingOutPlayers.length > 0 && (
+                <div className="sitting-out">
+                  <strong>Setzen diese Runde aus</strong>
+                  <div>
+                    {sittingOutPlayers.map((player) => (
+                      <span key={player.id}>
+                        <i>{player.emoji}</i>
+                        {player.display_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="matches">
+                {round.matches.map((m) => (
+                  <MatchCard
+                    key={m.id}
+                    m={m}
+                    players={pm}
+                    result={round.state === "results"}
+                    save={(a, b) =>
+                      mutate(
+                        `/admin/matches/${m.id}/result`,
+                        {
+                          method: "PUT",
+                          body: JSON.stringify({
+                            teamAGames: a,
+                            teamBGames: b,
+                          }),
+                        },
+                        "Ergebnis gespeichert.",
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </>
           )}
           {round?.state === "results" && (
             <Button
@@ -959,6 +1026,7 @@ function PublicEvent() {
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState(""),
     [selected, setSelected] = useState("");
+  const detailRef = useRef<HTMLElement>(null);
   const load = () =>
     api<EventData>(`/public/events/${slug}`)
       .then(setData)
@@ -966,6 +1034,15 @@ function PublicEvent() {
   useEffect(() => {
     void load();
   }, [slug]);
+  useEffect(() => {
+    if (!selected) return;
+    detailRef.current?.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [selected]);
   const match = useMemo(
     () =>
       data?.currentRound?.matches.find((m) =>
@@ -990,21 +1067,48 @@ function PublicEvent() {
         <Loading />
       </Shell>
     );
+  const currentRound = data.currentRound;
+  const selectedPlayer = data.players.find((x) => x.id === selected);
   const p = (id: string) => data.players.find((x) => x.id === id)!;
   let detail = (
-    <Empty
-      icon={<TennisBall />}
-      title="Spieler auswählen"
-      text="Tippe in der Bestenliste auf einen Namen."
-    />
+    <div className="public-state">
+      <b>
+        <TennisBall />
+      </b>
+      <h2>Wer bist du?</h2>
+      <p>
+        Tippe unten deinen Namen an. Danach siehst du sofort Platz, Partner und
+        Gegner.
+      </p>
+    </div>
   );
-  if (selected && !match)
+  if (selectedPlayer && !currentRound)
     detail = (
-      <Empty
-        icon={<Timer />}
-        title="Diese Runde aussetzen"
-        text="Der Spieler ist in dieser Runde nicht auf einem Platz."
-      />
+      <div className="public-state calm">
+        <b>
+          <Timer />
+        </b>
+        <p className="public-playerline">
+          <i>{selectedPlayer.emoji}</i>
+          <strong>{selectedPlayer.display_name}</strong>
+        </p>
+        <h2>Noch keine Paarung</h2>
+        <p>Die Turnierleitung bereitet die nächste Runde vor.</p>
+      </div>
+    );
+  if (selectedPlayer && currentRound && !match)
+    detail = (
+      <div className="public-state rest">
+        <b>
+          <Timer />
+        </b>
+        <p className="public-playerline">
+          <i>{selectedPlayer.emoji}</i>
+          <strong>{selectedPlayer.display_name}</strong>
+        </p>
+        <h2>Du setzt diese Runde aus</h2>
+        <p>Kurz durchatmen. Bei der nächsten Runde wieder reinschauen.</p>
+      </div>
     );
   if (match) {
     const ids = [
@@ -1020,69 +1124,84 @@ function PublicEvent() {
       opps = (a ? ids.slice(2) : ids.slice(0, 2)).map(p);
     detail = (
       <div className="assignment">
-        <p>Platz {match.court_number}</p>
-        <h2>
-          {p(selected).emoji} {p(selected).display_name}
-        </h2>
-        <span>
-          Partner
-          <strong>
-            {partner.emoji} {partner.display_name}
-          </strong>
-        </span>
-        <span>
-          Gegner
-          <strong>
-            {opps.map((x) => (
-              <i key={x.id}>
-                {x.emoji} {x.display_name}
-              </i>
-            ))}
-          </strong>
-        </span>
+        <div className="assignment-court">
+          <span>Platz</span>
+          <strong>{match.court_number}</strong>
+        </div>
+        <div className="assignment-player">
+          <span>Du spielst</span>
+          <h2>
+            {p(selected).emoji} {p(selected).display_name}
+          </h2>
+        </div>
+        <div className="assignment-info">
+          <section>
+            <span>Partner</span>
+            <strong>
+              {partner.emoji} {partner.display_name}
+            </strong>
+          </section>
+          <section>
+            <span>Gegner</span>
+            <strong>
+              {opps.map((x) => (
+                <i key={x.id}>
+                  {x.emoji} {x.display_name}
+                </i>
+              ))}
+            </strong>
+          </section>
+        </div>
       </div>
     );
   }
   return (
     <Shell>
-      <div className="heading">
-        <div>
-          <p className="kicker">
-            {data.currentRound
-              ? `Runde ${data.currentRound.round_number}`
-              : "Lobby"}
-          </p>
-          <h1>{data.event.name}</h1>
-          <p>Bestenliste und aktuelle Platzbelegung</p>
-        </div>
-        <Button variant="soft" onClick={load}>
-          <ArrowClockwise /> Aktualisieren
-        </Button>
-      </div>
-      {!data.currentRound && (
-        <div className="public-lobby">
-          <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+      <div className="public-screen">
+        <div className="heading public-hero">
           <div>
-            <strong>Lobby ge{"\u00f6"}ffnet</strong>
-            <span>
-              Warte auf die n{"\u00e4"}chsten Paarungen der Turnierleitung.
-            </span>
+            <p className="kicker">
+              {currentRound ? `Runde ${currentRound.round_number}` : "Lobby"}
+            </p>
+            <h1>{data.event.name}</h1>
+            <p>
+              {selectedPlayer
+                ? `${selectedPlayer.emoji} ${selectedPlayer.display_name}`
+                : "Namen antippen, Zuweisung sehen"}
+            </p>
           </div>
+          <Button className="public-refresh" variant="soft" onClick={load}>
+            <ArrowClockwise /> Aktualisieren
+          </Button>
         </div>
-      )}
-      <div className="public">
-        <section className="panel">
-          <div className="title">
-            <h2>Bestenliste</h2>
-            <Trophy />
+        {!currentRound && (
+          <div className="public-lobby">
+            <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+            <div>
+              <strong>Lobby ge{"\u00f6"}ffnet</strong>
+              <span>Die n{"\u00e4"}chsten Paarungen erscheinen hier.</span>
+            </div>
           </div>
-          <Leaderboard
-            players={data.leaderboard}
-            selected={selected}
-            onSelect={setSelected}
-          />
-        </section>
-        <section className="panel detail">{detail}</section>
+        )}
+        <div className="public">
+          <section className="panel detail" ref={detailRef} aria-live="polite">
+            {detail}
+          </section>
+          <section className="panel public-rank-panel">
+            <div className="title">
+              <div>
+                <h2>Bestenliste</h2>
+                <span className="title-note">Tippe deinen Namen an</span>
+              </div>
+              <Trophy />
+            </div>
+            <Leaderboard
+              players={data.leaderboard}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </section>
+        </div>
       </div>
     </Shell>
   );
