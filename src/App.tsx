@@ -30,11 +30,77 @@ import {
   SignOut,
   TennisBall,
   Timer,
+  Trash,
   Trophy,
   Users,
 } from "@phosphor-icons/react";
 import QRCode from "qrcode";
+import hairBow from "./assets/hair-bow.png";
 import sgaLogo from "./assets/sga-logo.png";
+import {
+  AlertDialog as UiAlertDialog,
+  AlertDialogAction as UiAlertDialogAction,
+  AlertDialogCancel as UiAlertDialogCancel,
+  AlertDialogContent as UiAlertDialogContent,
+  AlertDialogDescription as UiAlertDialogDescription,
+  AlertDialogFooter as UiAlertDialogFooter,
+  AlertDialogHeader as UiAlertDialogHeader,
+  AlertDialogMedia as UiAlertDialogMedia,
+  AlertDialogTitle as UiAlertDialogTitle,
+  AlertDialogTrigger as UiAlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Alert as UiAlert,
+  AlertDescription as UiAlertDescription,
+  AlertTitle as UiAlertTitle,
+} from "@/components/ui/alert";
+import { Badge as UiBadge } from "@/components/ui/badge";
+import { Button as UiButton } from "@/components/ui/button";
+import {
+  Card as UiCard,
+  CardAction as UiCardAction,
+  CardContent as UiCardContent,
+  CardDescription as UiCardDescription,
+  CardFooter as UiCardFooter,
+  CardHeader as UiCardHeader,
+  CardTitle as UiCardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog as UiDialog,
+  DialogClose as UiDialogClose,
+  DialogContent as UiDialogContent,
+  DialogFooter as UiDialogFooter,
+  DialogHeader as UiDialogHeader,
+  DialogTitle as UiDialogTitle,
+  DialogTrigger as UiDialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Field as UiField,
+  FieldGroup as UiFieldGroup,
+  FieldLabel as UiFieldLabel,
+  FieldTitle as UiFieldTitle,
+} from "@/components/ui/field";
+import { Input as UiInput } from "@/components/ui/input";
+import {
+  InputGroup as UiInputGroup,
+  InputGroupAddon as UiInputGroupAddon,
+  InputGroupButton as UiInputGroupButton,
+  InputGroupInput as UiInputGroupInput,
+} from "@/components/ui/input-group";
+import { ScrollArea as UiScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select as UiSelect,
+  SelectContent as UiSelectContent,
+  SelectGroup as UiSelectGroup,
+  SelectItem as UiSelectItem,
+  SelectTrigger as UiSelectTrigger,
+  SelectValue as UiSelectValue,
+} from "@/components/ui/select";
+import { Separator as UiSeparator } from "@/components/ui/separator";
+import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
+import { Switch as UiSwitch } from "@/components/ui/switch";
+import { TooltipProvider as UiTooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 type Player = {
   id: string;
@@ -83,6 +149,12 @@ type EventData = {
   currentRound: Round | null;
 };
 const scoreValues = [0, 1, 2, 3, 4, 5, 6];
+const matchPlayerIds = (match: Match) => [
+  match.team_a_player_1_id,
+  match.team_a_player_2_id,
+  match.team_b_player_1_id,
+  match.team_b_player_2_id,
+];
 let csrf = "";
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -211,6 +283,88 @@ function Login({ done }: { done: () => void }) {
   );
 }
 
+function DeleteEventDialog({
+  event,
+  onDeleted,
+  compact = false,
+}: {
+  event: Pick<EventRow, "id" | "name">;
+  onDeleted: () => void;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function remove() {
+    setDeleting(true);
+    setError("");
+    try {
+      await api(`/admin/events/${event.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: event.name }),
+      });
+      setOpen(false);
+      onDeleted();
+    } catch (x) {
+      setError((x as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <UiAlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!deleting) setOpen(next);
+        if (!next) setError("");
+      }}
+    >
+      <UiAlertDialogTrigger asChild>
+        <UiButton
+          variant={compact ? "ghost" : "destructive"}
+          size={compact ? "icon" : "default"}
+          aria-label={`Veranstaltung ${event.name} löschen`}
+        >
+          <Trash data-icon={compact ? undefined : "inline-start"} />
+          {!compact && "Löschen"}
+        </UiButton>
+      </UiAlertDialogTrigger>
+      <UiAlertDialogContent>
+        <UiAlertDialogHeader>
+          <UiAlertDialogMedia>
+            <Trash />
+          </UiAlertDialogMedia>
+          <UiAlertDialogTitle>Veranstaltung löschen?</UiAlertDialogTitle>
+          <UiAlertDialogDescription>
+            „{event.name}“ sowie alle Teilnehmer, Runden und Ergebnisse werden
+            dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht
+            werden.
+          </UiAlertDialogDescription>
+        </UiAlertDialogHeader>
+        {error && <p className="delete-event-error">{error}</p>}
+        <UiAlertDialogFooter>
+          <UiAlertDialogCancel disabled={deleting}>
+            Abbrechen
+          </UiAlertDialogCancel>
+          <UiAlertDialogAction
+            variant="destructive"
+            disabled={deleting}
+            onClick={(e) => {
+              e.preventDefault();
+              void remove();
+            }}
+          >
+            <Trash data-icon="inline-start" />
+            {deleting ? "Wird gelöscht…" : "Endgültig löschen"}
+          </UiAlertDialogAction>
+        </UiAlertDialogFooter>
+      </UiAlertDialogContent>
+    </UiAlertDialog>
+  );
+}
+
 function Dashboard() {
   const nav = useNavigate();
   const [items, setItems] = useState<EventRow[] | null>(null);
@@ -304,22 +458,36 @@ function Dashboard() {
       ) : (
         <div className="events">
           {items.map((x) => (
-            <button key={x.id} onClick={() => nav(`/admin/events/${x.id}`)}>
-              <span>
-                <strong>{x.name}</strong>
-                <small>
-                  {x.default_court_count} Plätze,{" "}
-                  {x.default_round_duration_seconds / 60} Minuten
-                </small>
-              </span>
-              <Badge color={x.status === "archived" ? "gray" : "blue"}>
-                {x.status === "archived"
-                  ? "Archiviert"
-                  : x.status === "lobby"
-                    ? "Lobby"
-                    : "Aktiv"}
-              </Badge>
-            </button>
+            <div className="event-row" key={x.id}>
+              <button
+                className="event-open"
+                onClick={() => nav(`/admin/events/${x.id}`)}
+              >
+                <span>
+                  <strong>{x.name}</strong>
+                  <small>
+                    {x.default_court_count} Plätze,{" "}
+                    {x.default_round_duration_seconds / 60} Minuten
+                  </small>
+                </span>
+                <Badge color={x.status === "archived" ? "gray" : "blue"}>
+                  {x.status === "archived"
+                    ? "Archiviert"
+                    : x.status === "lobby"
+                      ? "Lobby"
+                      : "Aktiv"}
+                </Badge>
+              </button>
+              <DeleteEventDialog
+                event={x}
+                compact
+                onDeleted={() =>
+                  setItems((current) =>
+                    current?.filter((item) => item.id !== x.id) ?? null,
+                  )
+                }
+              />
+            </div>
           ))}
         </div>
       )}
@@ -347,16 +515,24 @@ function Leaderboard({
         >
           <b>{p.rank}</b>
           <i>{p.emoji}</i>
-          <span>
+          <span className="ranking-player">
             <strong>{p.display_name}</strong>
-            <small aria-label={`${p.wins} Siege`}>
-              {p.wins ? "\u{1F380}".repeat(p.wins) : "Noch kein Sieg"}
+          </span>
+          <span className="ranking-stats">
+            <span
+              className="win-tally"
+              data-zero={p.wins === 0}
+              role="img"
+              aria-label={`${p.wins} ${p.wins === 1 ? "Sieg" : "Siege"}`}
+            >
+              <img src={hairBow} alt="" aria-hidden="true" />
+              <span className="win-count">{p.wins}</span>
+            </span>
+            <small className="game-difference">
+              Diff. {p.gameDifference > 0 ? "+" : ""}
+              {p.gameDifference}
             </small>
           </span>
-          <em>
-            {p.gameDifference > 0 ? "+" : ""}
-            {p.gameDifference}
-          </em>
         </button>
       ))}
     </div>
@@ -366,7 +542,7 @@ function Leaderboard({
 function QR({ url }: { url: string }) {
   const [img, setImg] = useState("");
   return (
-    <Dialog.Root
+    <UiDialog
       onOpenChange={(o) =>
         o &&
         QRCode.toDataURL(url, {
@@ -376,32 +552,32 @@ function QR({ url }: { url: string }) {
         }).then(setImg)
       }
     >
-      <Dialog.Trigger>
-        <Button variant="soft">
-          <Link /> Teilnehmeransicht
-        </Button>
-      </Dialog.Trigger>
-      <Dialog.Content maxWidth="460px">
-        <Dialog.Title>Teilnehmeransicht</Dialog.Title>
+      <UiDialogTrigger asChild>
+        <UiButton variant="outline">
+          <Link data-icon="inline-start" /> Teilnehmeransicht
+        </UiButton>
+      </UiDialogTrigger>
+      <UiDialogContent className="sm:max-w-md">
+        <UiDialogHeader>
+          <UiDialogTitle>Teilnehmeransicht</UiDialogTitle>
+        </UiDialogHeader>
         <div className="qr">
           {img ? (
             <img src={img} alt="QR-Code zur Teilnehmeransicht" />
           ) : (
-            <Loading />
+            <UiSkeleton className="size-72" />
           )}
         </div>
-        <Flex gap="3" justify="end">
-          <Dialog.Close>
-            <Button color="gray" variant="soft">
-              Schließen
-            </Button>
-          </Dialog.Close>
-          <Button onClick={() => navigator.clipboard.writeText(url)}>
-            <Copy /> Link kopieren
-          </Button>
-        </Flex>
-      </Dialog.Content>
-    </Dialog.Root>
+        <UiDialogFooter>
+          <UiDialogClose asChild>
+            <UiButton variant="outline">Schließen</UiButton>
+          </UiDialogClose>
+          <UiButton onClick={() => navigator.clipboard.writeText(url)}>
+            <Copy data-icon="inline-start" /> Link kopieren
+          </UiButton>
+        </UiDialogFooter>
+      </UiDialogContent>
+    </UiDialog>
   );
 }
 
@@ -472,7 +648,9 @@ function MatchCard({
     <article className="match court-card">
       <header className="court-label">
         <b>Platz {m.court_number}</b>
-        {m.result_type === "played" && <Badge color="blue">Gespeichert</Badge>}
+        {m.result_type === "played" && (
+          <UiBadge variant="secondary">Gespeichert</UiBadge>
+        )}
       </header>
       <div className="match-board">
         <div className="score-team">
@@ -501,10 +679,10 @@ function MatchCard({
           <ScorePicker label="Team links" value={a} onChange={setA} />
           <b className="score-divider">:</b>
           <ScorePicker label="Team rechts" value={b} onChange={setB} />
-          <IconButton
+          <UiButton
+            size="icon"
             aria-label="Ergebnis speichern"
-            color={canSave ? "blue" : "gray"}
-            variant={canSave ? "solid" : "soft"}
+            variant={canSave ? "default" : "secondary"}
             disabled={!canSave || saving}
             onClick={() => {
               if (a !== null && b !== null && canSave)
@@ -517,7 +695,7 @@ function MatchCard({
             }}
           >
             <Check />
-          </IconButton>
+          </UiButton>
           <small
             className={
               saved
@@ -583,7 +761,7 @@ function ScorePicker({
         </button>
       </div>
       {customOpen && (
-        <TextField.Root
+        <UiInput
           type="number"
           min="7"
           inputMode="numeric"
@@ -602,6 +780,125 @@ function ScorePicker({
         />
       )}
     </div>
+  );
+}
+
+function ScoreCorrection({
+  round,
+  match,
+  players,
+  playerId,
+  save,
+}: {
+  round: Round;
+  match: Match;
+  players: Map<string, Player>;
+  playerId: string;
+  save: (a: number, b: number) => Promise<void>;
+}) {
+  const savedKey =
+    match.team_a_games !== null && match.team_b_games !== null
+      ? `${match.team_a_games}:${match.team_b_games}`
+      : "";
+  const [a, setA] = useState<number | null>(match.team_a_games),
+    [b, setB] = useState<number | null>(match.team_b_games),
+    [saving, setSaving] = useState(false),
+    [failed, setFailed] = useState(false),
+    [saved, setSaved] = useState(false);
+  const currentKey = a !== null && b !== null ? `${a}:${b}` : "";
+  const changed = currentKey !== "" && currentKey !== savedKey;
+  const canSave = changed && a !== null && b !== null && a !== b;
+  useEffect(() => {
+    setA(match.team_a_games);
+    setB(match.team_b_games);
+    setFailed(false);
+    setSaved(false);
+  }, [match.id, match.team_a_games, match.team_b_games]);
+  const playerPill = (id: string) => {
+    const player = players.get(id);
+    return (
+      <span className={id === playerId ? "selected-player" : ""}>
+        <i>{player?.emoji}</i>
+        {player?.display_name}
+      </span>
+    );
+  };
+  return (
+    <article className="score-correction">
+      <header>
+        <div>
+          <strong>
+            Runde {round.round_number}
+            {" \u00b7 "}
+            Platz {match.court_number}
+          </strong>
+          <small>
+            {match.result_type === "missing"
+              ? "Als fehlend gewertet"
+              : "Gespeichertes Ergebnis"}
+          </small>
+        </div>
+        <UiBadge
+          variant={match.result_type === "missing" ? "destructive" : "secondary"}
+        >
+          {saved
+            ? "Aktualisiert"
+            : match.result_type === "missing"
+              ? "0:0"
+              : savedKey}
+        </UiBadge>
+      </header>
+      <div className="correction-teams">
+        <div>
+          {playerPill(match.team_a_player_1_id)}
+          {playerPill(match.team_a_player_2_id)}
+        </div>
+        <b>
+          {a ?? "-"}:{b ?? "-"}
+        </b>
+        <div>
+          {playerPill(match.team_b_player_1_id)}
+          {playerPill(match.team_b_player_2_id)}
+        </div>
+      </div>
+      <footer>
+        <ScorePicker label="Team links" value={a} onChange={setA} />
+        <ScorePicker label="Team rechts" value={b} onChange={setB} />
+        <UiButton
+          disabled={!canSave || saving}
+          onClick={() => {
+            if (a === null || b === null || !canSave) return;
+            setSaving(true);
+            setFailed(false);
+            void save(a, b)
+              .then(() => setSaved(true))
+              .catch(() => setFailed(true))
+              .finally(() => setSaving(false));
+          }}
+        >
+          <Check data-icon="inline-start" /> Speichern
+        </UiButton>
+        <small
+          className={
+            failed
+              ? "save-state failed"
+              : saved
+                ? "save-state saved"
+                : "save-state"
+          }
+        >
+          {failed
+            ? "Speichern fehlgeschlagen"
+            : saved
+              ? "Korrektur gespeichert"
+              : canSave
+                ? "Bereit zum Speichern"
+                : a === b && a !== null
+                  ? "Kein Unentschieden möglich"
+                  : "Spielstand wählen"}
+        </small>
+      </footer>
+    </article>
   );
 }
 function Clock({
@@ -632,9 +929,11 @@ function Clock({
   }, [round.id, round.state, round.expires_at]);
   if (["published", "results"].includes(round.state))
     return (
-      <Badge color={round.state === "results" ? "orange" : "blue"}>
+      <UiBadge
+        variant={round.state === "results" ? "destructive" : "secondary"}
+      >
         {round.state === "results" ? "Ergebnisse" : "Bereit"}
-      </Badge>
+      </UiBadge>
     );
   return (
     <div className="clock">
@@ -643,10 +942,11 @@ function Clock({
         {String(left % 60).padStart(2, "0")}
       </b>
       <span>{round.state === "paused" ? "Pausiert" : "Läuft"}</span>
-      <Flex gap="2">
+      <div className="clock-actions">
         {round.state === "running" ? (
-          <IconButton
-            variant="soft"
+          <UiButton
+            size="icon"
+            variant="outline"
             aria-label="Runde pausieren"
             onClick={() =>
               mutate(`/admin/rounds/${round.id}/action`, {
@@ -656,10 +956,11 @@ function Clock({
             }
           >
             <Pause />
-          </IconButton>
+          </UiButton>
         ) : (
-          <IconButton
-            variant="soft"
+          <UiButton
+            size="icon"
+            variant="outline"
             aria-label="Runde fortsetzen"
             onClick={() =>
               mutate(`/admin/rounds/${round.id}/action`, {
@@ -669,11 +970,11 @@ function Clock({
             }
           >
             <Play />
-          </IconButton>
+          </UiButton>
         )}
-        <IconButton
-          color="orange"
-          variant="soft"
+        <UiButton
+          size="icon"
+          variant="secondary"
           aria-label="Runde skippen"
           onClick={() =>
             mutate(`/admin/rounds/${round.id}/action`, {
@@ -683,8 +984,8 @@ function Clock({
           }
         >
           <SkipForward />
-        </IconButton>
-      </Flex>
+        </UiButton>
+      </div>
     </div>
   );
 }
@@ -697,6 +998,7 @@ function EventAdmin() {
     [note, setNote] = useState("");
   const [duration, setDuration] = useState(20),
     [courts, setCourts] = useState(4);
+  const [correctionPlayerId, setCorrectionPlayerId] = useState("");
   const load = () =>
     api<EventData>(`/admin/events/${id}`)
       .then((x) => {
@@ -734,15 +1036,54 @@ function EventAdmin() {
     }
   }
   if (!data)
-    return error ? <p className="notice error">{error}</p> : <Loading />;
+    return error ? (
+      <UiAlert variant="destructive">
+        <UiAlertTitle>Veranstaltung konnte nicht geladen werden</UiAlertTitle>
+        <UiAlertDescription>{error}</UiAlertDescription>
+      </UiAlert>
+    ) : (
+      <div className="control-page control-loading" aria-label="Veranstaltung lädt">
+        <UiCard>
+          <UiCardHeader>
+            <UiSkeleton className="h-7 w-2/5" />
+            <UiSkeleton className="h-4 w-3/5" />
+          </UiCardHeader>
+        </UiCard>
+        <div className="control-desk">
+          <UiSkeleton className="h-[560px] w-full rounded-xl" />
+          <UiSkeleton className="h-[560px] w-full rounded-xl" />
+        </div>
+      </div>
+    );
   const round = data.currentRound,
     pm = new Map(data.players.map((p) => [p.id, p])),
+    correctionPlayer = correctionPlayerId
+      ? pm.get(correctionPlayerId)
+      : undefined,
+    correctionMatches = correctionPlayer
+      ? data.rounds
+          .filter((item) => item.state === "completed")
+          .flatMap((item) =>
+            item.matches
+              .filter((match) =>
+                matchPlayerIds(match).includes(correctionPlayer.id),
+              )
+              .map((match) => ({ round: item, match })),
+          )
+          .sort(
+            (a, b) =>
+              b.round.round_number - a.round.round_number ||
+              a.match.court_number - b.match.court_number,
+          )
+      : [],
     sittingOutPlayers =
       round?.sitting_out_player_ids
         .map((playerId) => pm.get(playerId))
         .filter((player): player is Player => Boolean(player)) ?? [],
     participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
+    perfectActiveCount = activePlayers >= 4 && activePlayers % 4 === 0,
+    nextSitOutCount = activePlayers >= 4 ? activePlayers % 4 : 0,
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     visibleLobbySlots = Math.max(
@@ -772,102 +1113,114 @@ function EventAdmin() {
     f.reset();
   }
   return (
-    <>
-      <div className="heading">
-        <div>
-          <Button variant="ghost" color="gray" onClick={() => nav("/admin")}>
-            Zur Übersicht
-          </Button>
-          <h1>{data.event.name}</h1>
-        </div>
-        <QR url={`${location.origin}/event/${data.event.public_slug}`} />
-      </div>
-      {error && <p className="notice error">{error}</p>}
-      {note && (
-        <p className="notice success">
-          <Check /> {note}
-        </p>
+    <UiTooltipProvider>
+      <div className="control-page">
+      <UiCard className="control-header">
+        <UiCardHeader>
+          <UiCardTitle>
+            <UiButton variant="ghost" size="sm" onClick={() => nav("/admin")}>
+              Zur Übersicht
+            </UiButton>
+            <span>{data.event.name}</span>
+          </UiCardTitle>
+          <UiCardDescription>
+            {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
+            {" · "}
+            {participantCount} Teilnehmer · {courts} Plätze · {duration} Minuten
+          </UiCardDescription>
+          <UiCardAction>
+            <UiBadge variant={lobbyOpen ? "outline" : "secondary"}>
+              {lobbyOpen
+                ? "Vorbereitung"
+                : round?.state === "results"
+                  ? "Ergebnisse"
+                  : round?.state === "published"
+                    ? "Bereit"
+                    : round?.state === "paused"
+                      ? "Pausiert"
+                      : "Läuft"}
+            </UiBadge>
+          </UiCardAction>
+        </UiCardHeader>
+        <UiCardFooter>
+          <QR url={`${location.origin}/event/${data.event.public_slug}`} />
+          {round && round.state !== "completed" && (
+            <Clock round={round} mutate={mutate} />
+          )}
+        </UiCardFooter>
+      </UiCard>
+      {error && (
+        <UiAlert variant="destructive">
+          <UiAlertTitle>Anfrage fehlgeschlagen</UiAlertTitle>
+          <UiAlertDescription>{error}</UiAlertDescription>
+        </UiAlert>
       )}
-      <div className={`admin${lobbyOpen ? " lobby-open" : ""}`}>
-        <section className="panel stage">
-          <div className="roundhead">
-            <div>
-              <p className="kicker">
-                {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
-              </p>
-              <h2>
-                {!round || round.state === "completed"
-                  ? "Nächste Runde vorbereiten"
-                  : round.state === "results"
-                    ? "Ergebnisse eintragen"
-                    : round.state === "published"
-                      ? "Paarungen veröffentlicht"
-                      : "Runde läuft"}
-              </h2>
-            </div>
-            {round && round.state !== "completed" && (
-              <Clock round={round} mutate={mutate} />
-            )}
-          </div>
-          <div className="lobby-status">
-            <img src={sgaLogo} alt="" />
-            <div>
-              <strong>
-                {round && round.state !== "completed"
-                  ? "Runde ist f\u00fcr die Teilnehmer sichtbar"
-                  : "Teilnehmer warten auf Paarungen"}
-              </strong>
-              <span>
-                Teilnehmer {participantCount} · {courts} Pl{"\u00e4"}tze ·{" "}
-                {duration} Minuten
-              </span>
-            </div>
-          </div>
+      {note && (
+        <UiAlert className="control-success">
+          <Check />
+          <UiAlertTitle>Erledigt</UiAlertTitle>
+          <UiAlertDescription>{note}</UiAlertDescription>
+        </UiAlert>
+      )}
+      <div className={cn("control-desk", lobbyOpen && "is-lobby")}>
+        <UiCard className="control-stage">
+          <UiCardHeader>
+            <UiCardTitle>
+              {!round || round.state === "completed"
+                ? "Nächste Runde vorbereiten"
+                : round.state === "results"
+                  ? "Ergebnisse eintragen"
+                  : round.state === "published"
+                    ? "Paarungen veröffentlicht"
+                    : "Runde läuft"}
+            </UiCardTitle>
+            <UiCardDescription>
+              {round && round.state !== "completed"
+                ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
+                : "Konfiguration prüfen und anschließend neue Paarungen erstellen."}
+            </UiCardDescription>
+          </UiCardHeader>
+          <UiCardContent>
           {(!round || round.state === "completed") && (
-            <div className="settings">
-              <label>
-                <span>
-                  <Timer /> Minuten
-                </span>
-                <TextField.Root
+            <UiFieldGroup className="control-settings">
+              <UiField orientation="horizontal">
+                <UiFieldLabel htmlFor="round-duration">
+                  <Timer /> Rundendauer
+                </UiFieldLabel>
+                <UiInput
+                  id="round-duration"
                   type="number"
                   min="1"
                   max="240"
                   value={duration}
                   onChange={(e) => setDuration(+e.target.value)}
                 />
-              </label>
-              <label>
-                <span>Plätze</span>
-                <Select.Root
+              </UiField>
+              <UiField orientation="horizontal">
+                <UiFieldTitle>Plätze</UiFieldTitle>
+                <UiSelect
                   value={String(courts)}
                   onValueChange={(v) => setCourts(+v)}
                 >
-                  <Select.Trigger />
-                  <Select.Content>
+                  <UiSelectTrigger aria-label="Anzahl Plätze">
+                    <UiSelectValue />
+                  </UiSelectTrigger>
+                  <UiSelectContent>
+                    <UiSelectGroup>
                     {Array.from({ length: 13 }, (_, i) => (
-                      <Select.Item key={i} value={String(i + 1)}>
+                      <UiSelectItem key={i} value={String(i + 1)}>
                         {i + 1}
-                      </Select.Item>
+                      </UiSelectItem>
                     ))}
-                  </Select.Content>
-                </Select.Root>
-              </label>
-            </div>
-          )}
-          {(!round || round.state === "completed") && (
-            <Button
-              size="3"
-              disabled={data.players.filter((p) => p.active).length < 4}
-              onClick={generate}
-            >
-              <ArrowClockwise /> Paarungen erstellen
-            </Button>
+                    </UiSelectGroup>
+                  </UiSelectContent>
+                </UiSelect>
+              </UiField>
+            </UiFieldGroup>
           )}
           {round?.state === "published" && (
-            <Flex gap="3">
-              <Button
-                size="3"
+            <div className="control-actions">
+              <UiButton
                 onClick={() =>
                   mutate(
                     `/admin/rounds/${round.id}/action`,
@@ -879,27 +1232,27 @@ function EventAdmin() {
                   )
                 }
               >
-                <Play weight="fill" /> Starten
-              </Button>
-              <Button size="3" variant="soft" onClick={generate}>
-                <ArrowClockwise /> Neu auslosen
-              </Button>
-            </Flex>
-          )}{" "}
+                <Play data-icon="inline-start" weight="fill" /> Starten
+              </UiButton>
+              <UiButton variant="outline" onClick={generate}>
+                <ArrowClockwise data-icon="inline-start" /> Neu auslosen
+              </UiButton>
+            </div>
+          )}
           {round && round.state !== "completed" && (
             <>
               {sittingOutPlayers.length > 0 && (
-                <div className="sitting-out">
-                  <strong>Setzen diese Runde aus</strong>
-                  <div>
+                <UiAlert className="sitting-out">
+                  <UiAlertTitle>Setzen diese Runde aus</UiAlertTitle>
+                  <UiAlertDescription>
                     {sittingOutPlayers.map((player) => (
-                      <span key={player.id}>
+                      <UiBadge key={player.id} variant="outline">
                         <i>{player.emoji}</i>
                         {player.display_name}
-                      </span>
+                      </UiBadge>
                     ))}
-                  </div>
-                </div>
+                  </UiAlertDescription>
+                </UiAlert>
               )}
               <div className="matches">
                 {round.matches.map((m) => (
@@ -926,51 +1279,109 @@ function EventAdmin() {
               </div>
             </>
           )}
-          {round?.state === "results" && (
-            <Button
-              size="3"
-              onClick={() =>
-                mutate(
-                  `/admin/rounds/${round.id}/complete`,
-                  {
-                    method: "POST",
-                    body: JSON.stringify({ allowMissing: false }),
-                  },
-                  "Runde abgeschlossen.",
-                ).catch(() => {})
-              }
-            >
-              Runde abschließen
-            </Button>
-          )}
-        </section>
-        <aside>
-          <section className="panel participants">
-            <div className="title">
-              <div>
-                <h2>Teilnehmer</h2>
-                <span className="title-note">
-                  Teilnehmer {participantCount}
-                </span>
-              </div>
-              <Users />
-            </div>
-            <form className="add" onSubmit={add}>
-              <TextField.Root
-                name="name"
-                placeholder="Vorname oder Spitzname"
-                required
-              />
-              <IconButton type="submit" aria-label="Teilnehmer hinzufügen">
-                <Plus />
-              </IconButton>
+          </UiCardContent>
+          <UiCardFooter className="control-stage-footer">
+            {(!round || round.state === "completed") && (
+              <UiButton
+                size="lg"
+                disabled={activePlayers < 4}
+                onClick={generate}
+              >
+                <ArrowClockwise data-icon="inline-start" /> Paarungen erstellen
+              </UiButton>
+            )}
+            {round?.state === "results" && (
+              <UiButton
+                size="lg"
+                onClick={() =>
+                  mutate(
+                    `/admin/rounds/${round.id}/complete`,
+                    {
+                      method: "POST",
+                      body: JSON.stringify({ allowMissing: false }),
+                    },
+                    "Runde abgeschlossen.",
+                  ).catch(() => {})
+                }
+              >
+                Runde abschließen
+              </UiButton>
+            )}
+          </UiCardFooter>
+        </UiCard>
+        <aside className="control-rail">
+          <UiCard className="control-participants">
+            <UiCardHeader>
+              <UiCardTitle>Teilnehmer</UiCardTitle>
+              <UiCardDescription>
+                {activePlayers} aktiv von {participantCount}
+              </UiCardDescription>
+              <UiCardAction><Users /></UiCardAction>
+            </UiCardHeader>
+            <UiCardContent>
+            <form onSubmit={add}>
+              <UiFieldGroup>
+                <UiField>
+                  <UiFieldLabel className="sr-only" htmlFor="participant-name">
+                    Vorname oder Spitzname
+                  </UiFieldLabel>
+                  <UiInputGroup>
+                    <UiInputGroupInput
+                      id="participant-name"
+                      name="name"
+                      placeholder="Vorname oder Spitzname"
+                      required
+                    />
+                    <UiInputGroupAddon align="inline-end">
+                      <UiInputGroupButton
+                        type="submit"
+                        size="icon-xs"
+                        aria-label="Teilnehmer hinzufügen"
+                      >
+                        <Plus />
+                      </UiInputGroupButton>
+                    </UiInputGroupAddon>
+                  </UiInputGroup>
+                </UiField>
+              </UiFieldGroup>
             </form>
-            <div className="players">
+            <div
+              className={cn("participant-balance", perfectActiveCount && "perfect")}
+            >
+              {perfectActiveCount ? <Check /> : <Users />}
+              <span>
+                {activePlayers === 0
+                  ? "Noch keine aktiven Teilnehmer."
+                  : activePlayers < 4
+                    ? `${activePlayers} aktiv: mindestens 4 für eine Runde.`
+                    : perfectActiveCount
+                      ? `Perfekt: ${activePlayers} aktive Teilnehmer, niemand setzt aus.`
+                      : `${activePlayers} aktiv: ${nextSitOutCount} ${
+                          nextSitOutCount === 1 ? "setzt" : "setzen"
+                        } bei der nächsten Runde aus.`}
+                </span>
+            </div>
+            <UiScrollArea className="participant-scroll">
+            <div className="players control-players">
               {rankedPlayers.map((p) => (
-                <div key={p.id} className={!p.active ? "off" : ""}>
-                  <i>{p.emoji}</i>
-                  <span>{p.display_name}</span>
-                  <Switch
+                <div
+                  key={p.id}
+                  className={!p.active ? "player-row off" : "player-row"}
+                >
+                  <button
+                    type="button"
+                    className="player-open"
+                    onClick={() => setCorrectionPlayerId(p.id)}
+                    aria-label={`Spielstand von ${p.display_name} korrigieren`}
+                  >
+                    <i>{p.emoji}</i>
+                    <span>
+                      <strong>{p.display_name}</strong>
+                      <small>Spielstand korrigieren</small>
+                    </span>
+                  </button>
+                  <UiSwitch
+                    aria-label={`${p.display_name} aktiv`}
                     checked={!!p.active}
                     onCheckedChange={(active) =>
                       mutate(`/admin/players/${p.id}`, {
@@ -991,17 +1402,84 @@ function EventAdmin() {
                 </div>
               ))}
             </div>
-          </section>
-          <section className="panel leaderboard-panel">
-            <div className="title">
-              <h2>Bestenliste</h2>
-              <Trophy />
-            </div>
+            </UiScrollArea>
+            </UiCardContent>
+            <UiDialog
+              open={Boolean(correctionPlayer)}
+              onOpenChange={(open) => {
+                if (!open) setCorrectionPlayerId("");
+              }}
+            >
+              <UiDialogContent className="correction-dialog sm:max-w-3xl">
+                <UiDialogHeader>
+                  <UiDialogTitle>Spielstand korrigieren</UiDialogTitle>
+                </UiDialogHeader>
+                {correctionPlayer && (
+                  <>
+                    <div className="correction-player">
+                      <i>{correctionPlayer.emoji}</i>
+                      <div>
+                        <strong>{correctionPlayer.display_name}</strong>
+                        <span>
+                          {correctionMatches.length
+                            ? `${correctionMatches.length} abgeschlossene Spiele`
+                            : "Noch keine abgeschlossenen Spiele"}
+                        </span>
+                      </div>
+                    </div>
+                    {correctionMatches.length ? (
+                      <div className="correction-list">
+                        {correctionMatches.map(({ round, match }) => (
+                          <ScoreCorrection
+                            key={match.id}
+                            round={round}
+                            match={match}
+                            players={pm}
+                            playerId={correctionPlayer.id}
+                            save={(a, b) =>
+                              mutate(
+                                `/admin/matches/${match.id}/result`,
+                                {
+                                  method: "PUT",
+                                  body: JSON.stringify({
+                                    teamAGames: a,
+                                    teamBGames: b,
+                                  }),
+                                },
+                                "Spielstand korrigiert.",
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="correction-empty">
+                        Für diesen Teilnehmer gibt es noch keinen früheren
+                        Spielstand.
+                      </p>
+                    )}
+                  </>
+                )}
+                <UiDialogFooter>
+                  <UiDialogClose asChild>
+                    <UiButton variant="outline">Schließen</UiButton>
+                  </UiDialogClose>
+                </UiDialogFooter>
+              </UiDialogContent>
+            </UiDialog>
+          </UiCard>
+          <UiCard className="control-leaderboard">
+            <UiCardHeader>
+              <UiCardTitle>Bestenliste</UiCardTitle>
+              <UiCardAction><Trophy /></UiCardAction>
+            </UiCardHeader>
+            <UiCardContent>
             <Leaderboard players={data.leaderboard} />
-          </section>
-          <Button
-            color="gray"
-            variant="soft"
+            </UiCardContent>
+          </UiCard>
+          <UiSeparator />
+          <UiButton
+            variant="ghost"
             onClick={() =>
               mutate(
                 `/admin/events/${id}`,
@@ -1013,11 +1491,16 @@ function EventAdmin() {
               )
             }
           >
-            <Archive /> Archivieren
-          </Button>
+            <Archive data-icon="inline-start" /> Archivieren
+          </UiButton>
+          <DeleteEventDialog
+            event={data.event}
+            onDeleted={() => nav("/admin")}
+          />
         </aside>
       </div>
-    </>
+      </div>
+    </UiTooltipProvider>
   );
 }
 
