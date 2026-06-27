@@ -24,6 +24,7 @@ import {
   Link,
   LockKey,
   Pause,
+  PencilSimple,
   Play,
   Plus,
   SkipForward,
@@ -482,8 +483,9 @@ function Dashboard() {
                 event={x}
                 compact
                 onDeleted={() =>
-                  setItems((current) =>
-                    current?.filter((item) => item.id !== x.id) ?? null,
+                  setItems(
+                    (current) =>
+                      current?.filter((item) => item.id !== x.id) ?? null,
                   )
                 }
               />
@@ -802,6 +804,7 @@ function ScoreCorrection({
       : "";
   const [a, setA] = useState<number | null>(match.team_a_games),
     [b, setB] = useState<number | null>(match.team_b_games),
+    [editing, setEditing] = useState(false),
     [saving, setSaving] = useState(false),
     [failed, setFailed] = useState(false),
     [saved, setSaved] = useState(false);
@@ -811,6 +814,7 @@ function ScoreCorrection({
   useEffect(() => {
     setA(match.team_a_games);
     setB(match.team_b_games);
+    setEditing(false);
     setFailed(false);
     setSaved(false);
   }, [match.id, match.team_a_games, match.team_b_games]);
@@ -838,15 +842,34 @@ function ScoreCorrection({
               : "Gespeichertes Ergebnis"}
           </small>
         </div>
-        <UiBadge
-          variant={match.result_type === "missing" ? "destructive" : "secondary"}
-        >
-          {saved
-            ? "Aktualisiert"
-            : match.result_type === "missing"
-              ? "0:0"
-              : savedKey}
-        </UiBadge>
+        <div className="correction-match-actions">
+          <UiBadge
+            variant={
+              match.result_type === "missing" ? "destructive" : "secondary"
+            }
+          >
+            {saved
+              ? "Aktualisiert"
+              : match.result_type === "missing"
+                ? "0:0"
+                : savedKey}
+          </UiBadge>
+          {!editing && (
+            <UiButton
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`Ergebnis aus Runde ${round.round_number} bearbeiten`}
+              onClick={() => {
+                setEditing(true);
+                setFailed(false);
+                setSaved(false);
+              }}
+            >
+              <PencilSimple />
+            </UiButton>
+          )}
+        </div>
       </header>
       <div className="correction-teams">
         <div>
@@ -861,46 +884,169 @@ function ScoreCorrection({
           {playerPill(match.team_b_player_2_id)}
         </div>
       </div>
-      <footer>
-        <ScorePicker label="Team links" value={a} onChange={setA} />
-        <ScorePicker label="Team rechts" value={b} onChange={setB} />
-        <UiButton
-          disabled={!canSave || saving}
-          onClick={() => {
-            if (a === null || b === null || !canSave) return;
-            setSaving(true);
-            setFailed(false);
-            void save(a, b)
-              .then(() => setSaved(true))
-              .catch(() => setFailed(true))
-              .finally(() => setSaving(false));
-          }}
-        >
-          <Check data-icon="inline-start" /> Speichern
-        </UiButton>
-        <small
-          className={
-            failed
-              ? "save-state failed"
-              : saved
-                ? "save-state saved"
-                : "save-state"
-          }
-        >
-          {failed
-            ? "Speichern fehlgeschlagen"
-            : saved
-              ? "Korrektur gespeichert"
+      {editing && (
+        <footer>
+          <ScorePicker label="Team links" value={a} onChange={setA} />
+          <ScorePicker label="Team rechts" value={b} onChange={setB} />
+          <div className="correction-editor-actions">
+            <UiButton
+              disabled={!canSave || saving}
+              onClick={() => {
+                if (a === null || b === null || !canSave) return;
+                setSaving(true);
+                setFailed(false);
+                void save(a, b)
+                  .then(() => {
+                    setSaved(true);
+                    setEditing(false);
+                  })
+                  .catch(() => setFailed(true))
+                  .finally(() => setSaving(false));
+              }}
+            >
+              <Check data-icon="inline-start" />
+              {saving ? "Speichert\u2026" : "Speichern"}
+            </UiButton>
+            <UiButton
+              type="button"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => {
+                setA(match.team_a_games);
+                setB(match.team_b_games);
+                setEditing(false);
+                setFailed(false);
+              }}
+            >
+              Abbrechen
+            </UiButton>
+          </div>
+          <small className={failed ? "save-state failed" : "save-state"}>
+            {failed
+              ? "Speichern fehlgeschlagen. Bitte erneut versuchen."
               : canSave
                 ? "Bereit zum Speichern"
                 : a === b && a !== null
                   ? "Kein Unentschieden möglich"
                   : "Spielstand wählen"}
-        </small>
-      </footer>
+          </small>
+        </footer>
+      )}
     </article>
   );
 }
+
+function PlayerEditorHeader({
+  player,
+  matchCount,
+  save,
+}: {
+  player: Player;
+  matchCount: number;
+  save: (name: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(player.display_name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setName(player.display_name);
+    setEditing(false);
+    setError("");
+  }, [player.id, player.display_name]);
+  const trimmedName = name.trim();
+  const valid =
+    trimmedName.length > 0 &&
+    trimmedName.length <= 40 &&
+    trimmedName !== player.display_name;
+
+  return (
+    <div className="correction-player">
+      <i>{player.emoji}</i>
+      <div className="correction-player-details">
+        {editing ? (
+          <form
+            className="player-name-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!valid) return;
+              setSaving(true);
+              setError("");
+              void save(trimmedName)
+                .then(() => setEditing(false))
+                .catch((reason) =>
+                  setError(
+                    reason instanceof Error
+                      ? reason.message
+                      : "Name konnte nicht gespeichert werden.",
+                  ),
+                )
+                .finally(() => setSaving(false));
+            }}
+          >
+            <UiField data-invalid={Boolean(error)}>
+              <UiFieldLabel className="sr-only" htmlFor="player-display-name">
+                Teilnehmername
+              </UiFieldLabel>
+              <UiInput
+                id="player-display-name"
+                value={name}
+                minLength={1}
+                maxLength={40}
+                required
+                autoFocus
+                aria-invalid={Boolean(error)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError("");
+                }}
+              />
+            </UiField>
+            <div className="player-name-actions">
+              <UiButton type="submit" size="sm" disabled={!valid || saving}>
+                <Check data-icon="inline-start" />
+                {saving ? "Speichert\u2026" : "Speichern"}
+              </UiButton>
+              <UiButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => {
+                  setName(player.display_name);
+                  setEditing(false);
+                  setError("");
+                }}
+              >
+                Abbrechen
+              </UiButton>
+            </div>
+            {error && <small className="player-name-error">{error}</small>}
+          </form>
+        ) : (
+          <div className="player-name-display">
+            <strong>{player.display_name}</strong>
+            <UiButton
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`Name von ${player.display_name} bearbeiten`}
+              onClick={() => setEditing(true)}
+            >
+              <PencilSimple />
+            </UiButton>
+          </div>
+        )}
+        <span>
+          {matchCount
+            ? `${matchCount} abgeschlossene Spiele`
+            : "Noch keine abgeschlossenen Spiele"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Clock({
   round,
   mutate,
@@ -1042,7 +1188,10 @@ function EventAdmin() {
         <UiAlertDescription>{error}</UiAlertDescription>
       </UiAlert>
     ) : (
-      <div className="control-page control-loading" aria-label="Veranstaltung lädt">
+      <div
+        className="control-page control-loading"
+        aria-label="Veranstaltung lädt"
+      >
         <UiCard>
           <UiCardHeader>
             <UiSkeleton className="h-7 w-2/5" />
@@ -1115,390 +1264,416 @@ function EventAdmin() {
   return (
     <UiTooltipProvider>
       <div className="control-page">
-      <UiCard className="control-header">
-        <UiCardHeader>
-          <UiCardTitle>
-            <UiButton variant="ghost" size="sm" onClick={() => nav("/admin")}>
-              Zur Übersicht
-            </UiButton>
-            <span>{data.event.name}</span>
-          </UiCardTitle>
-          <UiCardDescription>
-            {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
-            {" · "}
-            {participantCount} Teilnehmer · {courts} Plätze · {duration} Minuten
-          </UiCardDescription>
-          <UiCardAction>
-            <UiBadge variant={lobbyOpen ? "outline" : "secondary"}>
-              {lobbyOpen
-                ? "Vorbereitung"
-                : round?.state === "results"
-                  ? "Ergebnisse"
-                  : round?.state === "published"
-                    ? "Bereit"
-                    : round?.state === "paused"
-                      ? "Pausiert"
-                      : "Läuft"}
-            </UiBadge>
-          </UiCardAction>
-        </UiCardHeader>
-        <UiCardFooter>
-          <QR url={`${location.origin}/event/${data.event.public_slug}`} />
-          {round && round.state !== "completed" && (
-            <Clock round={round} mutate={mutate} />
-          )}
-        </UiCardFooter>
-      </UiCard>
-      {error && (
-        <UiAlert variant="destructive">
-          <UiAlertTitle>Anfrage fehlgeschlagen</UiAlertTitle>
-          <UiAlertDescription>{error}</UiAlertDescription>
-        </UiAlert>
-      )}
-      {note && (
-        <UiAlert className="control-success">
-          <Check />
-          <UiAlertTitle>Erledigt</UiAlertTitle>
-          <UiAlertDescription>{note}</UiAlertDescription>
-        </UiAlert>
-      )}
-      <div className={cn("control-desk", lobbyOpen && "is-lobby")}>
-        <UiCard className="control-stage">
+        <UiCard className="control-header">
           <UiCardHeader>
             <UiCardTitle>
-              {!round || round.state === "completed"
-                ? "Nächste Runde vorbereiten"
-                : round.state === "results"
-                  ? "Ergebnisse eintragen"
-                  : round.state === "published"
-                    ? "Paarungen veröffentlicht"
-                    : "Runde läuft"}
+              <UiButton variant="ghost" size="sm" onClick={() => nav("/admin")}>
+                Zur Übersicht
+              </UiButton>
+              <span>{data.event.name}</span>
             </UiCardTitle>
             <UiCardDescription>
-              {round && round.state !== "completed"
-                ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
-                : "Konfiguration prüfen und anschließend neue Paarungen erstellen."}
+              {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
+              {" · "}
+              {participantCount} Teilnehmer · {courts} Plätze · {duration}{" "}
+              Minuten
             </UiCardDescription>
+            <UiCardAction>
+              <UiBadge variant={lobbyOpen ? "outline" : "secondary"}>
+                {lobbyOpen
+                  ? "Vorbereitung"
+                  : round?.state === "results"
+                    ? "Ergebnisse"
+                    : round?.state === "published"
+                      ? "Bereit"
+                      : round?.state === "paused"
+                        ? "Pausiert"
+                        : "Läuft"}
+              </UiBadge>
+            </UiCardAction>
           </UiCardHeader>
-          <UiCardContent>
-          {(!round || round.state === "completed") && (
-            <UiFieldGroup className="control-settings">
-              <UiField orientation="horizontal">
-                <UiFieldLabel htmlFor="round-duration">
-                  <Timer /> Rundendauer
-                </UiFieldLabel>
-                <UiInput
-                  id="round-duration"
-                  type="number"
-                  min="1"
-                  max="240"
-                  value={duration}
-                  onChange={(e) => setDuration(+e.target.value)}
-                />
-              </UiField>
-              <UiField orientation="horizontal">
-                <UiFieldTitle>Plätze</UiFieldTitle>
-                <UiSelect
-                  value={String(courts)}
-                  onValueChange={(v) => setCourts(+v)}
-                >
-                  <UiSelectTrigger aria-label="Anzahl Plätze">
-                    <UiSelectValue />
-                  </UiSelectTrigger>
-                  <UiSelectContent>
-                    <UiSelectGroup>
-                    {Array.from({ length: 13 }, (_, i) => (
-                      <UiSelectItem key={i} value={String(i + 1)}>
-                        {i + 1}
-                      </UiSelectItem>
-                    ))}
-                    </UiSelectGroup>
-                  </UiSelectContent>
-                </UiSelect>
-              </UiField>
-            </UiFieldGroup>
-          )}
-          {round?.state === "published" && (
-            <div className="control-actions">
-              <UiButton
-                onClick={() =>
-                  mutate(
-                    `/admin/rounds/${round.id}/action`,
-                    {
-                      method: "POST",
-                      body: JSON.stringify({ action: "start" }),
-                    },
-                    "Runde gestartet.",
-                  )
-                }
-              >
-                <Play data-icon="inline-start" weight="fill" /> Starten
-              </UiButton>
-              <UiButton variant="outline" onClick={generate}>
-                <ArrowClockwise data-icon="inline-start" /> Neu auslosen
-              </UiButton>
-            </div>
-          )}
-          {round && round.state !== "completed" && (
-            <>
-              {sittingOutPlayers.length > 0 && (
-                <UiAlert className="sitting-out">
-                  <UiAlertTitle>Setzen diese Runde aus</UiAlertTitle>
-                  <UiAlertDescription>
-                    {sittingOutPlayers.map((player) => (
-                      <UiBadge key={player.id} variant="outline">
-                        <i>{player.emoji}</i>
-                        {player.display_name}
-                      </UiBadge>
-                    ))}
-                  </UiAlertDescription>
-                </UiAlert>
-              )}
-              <div className="matches">
-                {round.matches.map((m) => (
-                  <MatchCard
-                    key={m.id}
-                    m={m}
-                    players={pm}
-                    result={round.state === "results"}
-                    save={(a, b) =>
-                      mutate(
-                        `/admin/matches/${m.id}/result`,
-                        {
-                          method: "PUT",
-                          body: JSON.stringify({
-                            teamAGames: a,
-                            teamBGames: b,
-                          }),
-                        },
-                        "Ergebnis gespeichert.",
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </>
-          )}
-          </UiCardContent>
-          <UiCardFooter className="control-stage-footer">
-            {(!round || round.state === "completed") && (
-              <UiButton
-                size="lg"
-                disabled={activePlayers < 4}
-                onClick={generate}
-              >
-                <ArrowClockwise data-icon="inline-start" /> Paarungen erstellen
-              </UiButton>
-            )}
-            {round?.state === "results" && (
-              <UiButton
-                size="lg"
-                onClick={() =>
-                  mutate(
-                    `/admin/rounds/${round.id}/complete`,
-                    {
-                      method: "POST",
-                      body: JSON.stringify({ allowMissing: false }),
-                    },
-                    "Runde abgeschlossen.",
-                  ).catch(() => {})
-                }
-              >
-                Runde abschließen
-              </UiButton>
+          <UiCardFooter>
+            <QR url={`${location.origin}/event/${data.event.public_slug}`} />
+            {round && round.state !== "completed" && (
+              <Clock round={round} mutate={mutate} />
             )}
           </UiCardFooter>
         </UiCard>
-        <aside className="control-rail">
-          <UiCard className="control-participants">
+        {error && (
+          <UiAlert variant="destructive">
+            <UiAlertTitle>Anfrage fehlgeschlagen</UiAlertTitle>
+            <UiAlertDescription>{error}</UiAlertDescription>
+          </UiAlert>
+        )}
+        {note && (
+          <UiAlert className="control-success">
+            <Check />
+            <UiAlertTitle>Erledigt</UiAlertTitle>
+            <UiAlertDescription>{note}</UiAlertDescription>
+          </UiAlert>
+        )}
+        <div className={cn("control-desk", lobbyOpen && "is-lobby")}>
+          <UiCard className="control-stage">
             <UiCardHeader>
-              <UiCardTitle>Teilnehmer</UiCardTitle>
+              <UiCardTitle>
+                {!round || round.state === "completed"
+                  ? "Nächste Runde vorbereiten"
+                  : round.state === "results"
+                    ? "Ergebnisse eintragen"
+                    : round.state === "published"
+                      ? "Paarungen veröffentlicht"
+                      : "Runde läuft"}
+              </UiCardTitle>
               <UiCardDescription>
-                {activePlayers} aktiv von {participantCount}
+                {round && round.state !== "completed"
+                  ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
+                  : "Konfiguration prüfen und anschließend neue Paarungen erstellen."}
               </UiCardDescription>
-              <UiCardAction><Users /></UiCardAction>
             </UiCardHeader>
             <UiCardContent>
-            <form onSubmit={add}>
-              <UiFieldGroup>
-                <UiField>
-                  <UiFieldLabel className="sr-only" htmlFor="participant-name">
-                    Vorname oder Spitzname
-                  </UiFieldLabel>
-                  <UiInputGroup>
-                    <UiInputGroupInput
-                      id="participant-name"
-                      name="name"
-                      placeholder="Vorname oder Spitzname"
-                      required
+              {(!round || round.state === "completed") && (
+                <UiFieldGroup className="control-settings">
+                  <UiField orientation="horizontal">
+                    <UiFieldLabel htmlFor="round-duration">
+                      <Timer /> Rundendauer
+                    </UiFieldLabel>
+                    <UiInput
+                      id="round-duration"
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={duration}
+                      onChange={(e) => setDuration(+e.target.value)}
                     />
-                    <UiInputGroupAddon align="inline-end">
-                      <UiInputGroupButton
-                        type="submit"
-                        size="icon-xs"
-                        aria-label="Teilnehmer hinzufügen"
-                      >
-                        <Plus />
-                      </UiInputGroupButton>
-                    </UiInputGroupAddon>
-                  </UiInputGroup>
-                </UiField>
-              </UiFieldGroup>
-            </form>
-            <div
-              className={cn("participant-balance", perfectActiveCount && "perfect")}
-            >
-              {perfectActiveCount ? <Check /> : <Users />}
-              <span>
-                {activePlayers === 0
-                  ? "Noch keine aktiven Teilnehmer."
-                  : activePlayers < 4
-                    ? `${activePlayers} aktiv: mindestens 4 für eine Runde.`
-                    : perfectActiveCount
-                      ? `Perfekt: ${activePlayers} aktive Teilnehmer, niemand setzt aus.`
-                      : `${activePlayers} aktiv: ${nextSitOutCount} ${
-                          nextSitOutCount === 1 ? "setzt" : "setzen"
-                        } bei der nächsten Runde aus.`}
-                </span>
-            </div>
-            <UiScrollArea className="participant-scroll">
-            <div className="players control-players">
-              {rankedPlayers.map((p) => (
-                <div
-                  key={p.id}
-                  className={!p.active ? "player-row off" : "player-row"}
-                >
-                  <button
-                    type="button"
-                    className="player-open"
-                    onClick={() => setCorrectionPlayerId(p.id)}
-                    aria-label={`Spielstand von ${p.display_name} korrigieren`}
-                  >
-                    <i>{p.emoji}</i>
-                    <span>
-                      <strong>{p.display_name}</strong>
-                      <small>Spielstand korrigieren</small>
-                    </span>
-                  </button>
-                  <UiSwitch
-                    aria-label={`${p.display_name} aktiv`}
-                    checked={!!p.active}
-                    onCheckedChange={(active) =>
-                      mutate(`/admin/players/${p.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ active }),
-                      }).catch(() => {})
+                  </UiField>
+                  <UiField orientation="horizontal">
+                    <UiFieldTitle>Plätze</UiFieldTitle>
+                    <UiSelect
+                      value={String(courts)}
+                      onValueChange={(v) => setCourts(+v)}
+                    >
+                      <UiSelectTrigger aria-label="Anzahl Plätze">
+                        <UiSelectValue />
+                      </UiSelectTrigger>
+                      <UiSelectContent>
+                        <UiSelectGroup>
+                          {Array.from({ length: 13 }, (_, i) => (
+                            <UiSelectItem key={i} value={String(i + 1)}>
+                              {i + 1}
+                            </UiSelectItem>
+                          ))}
+                        </UiSelectGroup>
+                      </UiSelectContent>
+                    </UiSelect>
+                  </UiField>
+                </UiFieldGroup>
+              )}
+              {round?.state === "published" && (
+                <div className="control-actions">
+                  <UiButton
+                    size="lg"
+                    data-primary-round-action
+                    onClick={() =>
+                      mutate(
+                        `/admin/rounds/${round.id}/action`,
+                        {
+                          method: "POST",
+                          body: JSON.stringify({ action: "start" }),
+                        },
+                        "Runde gestartet.",
+                      )
                     }
-                  />
+                  >
+                    <Play data-icon="inline-start" weight="fill" /> Runde
+                    starten
+                  </UiButton>
+                  <UiButton size="sm" variant="ghost" onClick={generate}>
+                    <ArrowClockwise data-icon="inline-start" /> Neu auslosen
+                  </UiButton>
                 </div>
-              ))}
-              {Array.from({
-                length: Math.max(0, visibleLobbySlots - rankedPlayers.length),
-              }).map((_, i) => (
-                <div key={`empty-${i}`} className="slot-empty">
-                  <i>+</i>
-                  <span>Leer</span>
-                  <small>Wartet auf Teilnehmer</small>
-                </div>
-              ))}
-            </div>
-            </UiScrollArea>
-            </UiCardContent>
-            <UiDialog
-              open={Boolean(correctionPlayer)}
-              onOpenChange={(open) => {
-                if (!open) setCorrectionPlayerId("");
-              }}
-            >
-              <UiDialogContent className="correction-dialog sm:max-w-3xl">
-                <UiDialogHeader>
-                  <UiDialogTitle>Spielstand korrigieren</UiDialogTitle>
-                </UiDialogHeader>
-                {correctionPlayer && (
-                  <>
-                    <div className="correction-player">
-                      <i>{correctionPlayer.emoji}</i>
-                      <div>
-                        <strong>{correctionPlayer.display_name}</strong>
-                        <span>
-                          {correctionMatches.length
-                            ? `${correctionMatches.length} abgeschlossene Spiele`
-                            : "Noch keine abgeschlossenen Spiele"}
-                        </span>
-                      </div>
-                    </div>
-                    {correctionMatches.length ? (
-                      <div className="correction-list">
-                        {correctionMatches.map(({ round, match }) => (
-                          <ScoreCorrection
-                            key={match.id}
-                            round={round}
-                            match={match}
-                            players={pm}
-                            playerId={correctionPlayer.id}
-                            save={(a, b) =>
-                              mutate(
-                                `/admin/matches/${match.id}/result`,
-                                {
-                                  method: "PUT",
-                                  body: JSON.stringify({
-                                    teamAGames: a,
-                                    teamBGames: b,
-                                  }),
-                                },
-                                "Spielstand korrigiert.",
-                              )
-                            }
-                          />
+              )}
+              {round && round.state !== "completed" && (
+                <>
+                  {sittingOutPlayers.length > 0 && (
+                    <UiAlert className="sitting-out">
+                      <UiAlertTitle>Setzen diese Runde aus</UiAlertTitle>
+                      <UiAlertDescription>
+                        {sittingOutPlayers.map((player) => (
+                          <UiBadge key={player.id} variant="outline">
+                            <i>{player.emoji}</i>
+                            {player.display_name}
+                          </UiBadge>
                         ))}
-                      </div>
-                    ) : (
-                      <p className="correction-empty">
-                        Für diesen Teilnehmer gibt es noch keinen früheren
-                        Spielstand.
-                      </p>
-                    )}
-                  </>
-                )}
-                <UiDialogFooter>
-                  <UiDialogClose asChild>
-                    <UiButton variant="outline">Schließen</UiButton>
-                  </UiDialogClose>
-                </UiDialogFooter>
-              </UiDialogContent>
-            </UiDialog>
-          </UiCard>
-          <UiCard className="control-leaderboard">
-            <UiCardHeader>
-              <UiCardTitle>Bestenliste</UiCardTitle>
-              <UiCardAction><Trophy /></UiCardAction>
-            </UiCardHeader>
-            <UiCardContent>
-            <Leaderboard players={data.leaderboard} />
+                      </UiAlertDescription>
+                    </UiAlert>
+                  )}
+                  <div className="matches">
+                    {round.matches.map((m) => (
+                      <MatchCard
+                        key={m.id}
+                        m={m}
+                        players={pm}
+                        result={round.state === "results"}
+                        save={(a, b) =>
+                          mutate(
+                            `/admin/matches/${m.id}/result`,
+                            {
+                              method: "PUT",
+                              body: JSON.stringify({
+                                teamAGames: a,
+                                teamBGames: b,
+                              }),
+                            },
+                            "Ergebnis gespeichert.",
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </UiCardContent>
+            <UiCardFooter className="control-stage-footer">
+              {(!round || round.state === "completed") && (
+                <UiButton
+                  size="lg"
+                  disabled={activePlayers < 4}
+                  onClick={generate}
+                >
+                  <ArrowClockwise data-icon="inline-start" /> Paarungen
+                  erstellen
+                </UiButton>
+              )}
+              {round?.state === "results" && (
+                <UiButton
+                  size="lg"
+                  onClick={() =>
+                    mutate(
+                      `/admin/rounds/${round.id}/complete`,
+                      {
+                        method: "POST",
+                        body: JSON.stringify({ allowMissing: false }),
+                      },
+                      "Runde abgeschlossen.",
+                    ).catch(() => {})
+                  }
+                >
+                  Runde abschließen
+                </UiButton>
+              )}
+            </UiCardFooter>
           </UiCard>
-          <UiSeparator />
-          <UiButton
-            variant="ghost"
-            onClick={() =>
-              mutate(
-                `/admin/events/${id}`,
-                {
-                  method: "PATCH",
-                  body: JSON.stringify({ status: "archived" }),
-                },
-                "Veranstaltung archiviert.",
-              )
-            }
-          >
-            <Archive data-icon="inline-start" /> Archivieren
-          </UiButton>
-          <DeleteEventDialog
-            event={data.event}
-            onDeleted={() => nav("/admin")}
-          />
-        </aside>
-      </div>
+          <aside className="control-rail">
+            <UiCard className="control-participants">
+              <UiCardHeader>
+                <UiCardTitle>Teilnehmer</UiCardTitle>
+                <UiCardDescription>
+                  {activePlayers} aktiv von {participantCount}
+                </UiCardDescription>
+                <UiCardAction>
+                  <Users />
+                </UiCardAction>
+              </UiCardHeader>
+              <UiCardContent>
+                <form onSubmit={add}>
+                  <UiFieldGroup>
+                    <UiField>
+                      <UiFieldLabel
+                        className="sr-only"
+                        htmlFor="participant-name"
+                      >
+                        Vorname oder Spitzname
+                      </UiFieldLabel>
+                      <UiInputGroup>
+                        <UiInputGroupInput
+                          id="participant-name"
+                          name="name"
+                          placeholder="Vorname oder Spitzname"
+                          required
+                        />
+                        <UiInputGroupAddon align="inline-end">
+                          <UiInputGroupButton
+                            type="submit"
+                            size="icon-xs"
+                            aria-label="Teilnehmer hinzufügen"
+                          >
+                            <Plus />
+                          </UiInputGroupButton>
+                        </UiInputGroupAddon>
+                      </UiInputGroup>
+                    </UiField>
+                  </UiFieldGroup>
+                </form>
+                <div
+                  className={cn(
+                    "participant-balance",
+                    perfectActiveCount && "perfect",
+                  )}
+                >
+                  {perfectActiveCount ? <Check /> : <Users />}
+                  <span>
+                    {activePlayers === 0
+                      ? "Noch keine aktiven Teilnehmer."
+                      : activePlayers < 4
+                        ? `${activePlayers} aktiv: mindestens 4 für eine Runde.`
+                        : perfectActiveCount
+                          ? `Perfekt: ${activePlayers} aktive Teilnehmer, niemand setzt aus.`
+                          : `${activePlayers} aktiv: ${nextSitOutCount} ${
+                              nextSitOutCount === 1 ? "setzt" : "setzen"
+                            } bei der nächsten Runde aus.`}
+                  </span>
+                </div>
+                <UiScrollArea className="participant-scroll">
+                  <div className="players control-players">
+                    {rankedPlayers.map((p) => (
+                      <div
+                        key={p.id}
+                        className={!p.active ? "player-row off" : "player-row"}
+                      >
+                        <button
+                          type="button"
+                          className="player-open"
+                          onClick={() => setCorrectionPlayerId(p.id)}
+                          aria-label={`${p.display_name} bearbeiten`}
+                        >
+                          <i>{p.emoji}</i>
+                          <span>
+                            <strong>{p.display_name}</strong>
+                          </span>
+                        </button>
+                        <UiSwitch
+                          aria-label={`${p.display_name} aktiv`}
+                          checked={!!p.active}
+                          onCheckedChange={(active) =>
+                            mutate(`/admin/players/${p.id}`, {
+                              method: "PATCH",
+                              body: JSON.stringify({ active }),
+                            }).catch(() => {})
+                          }
+                        />
+                      </div>
+                    ))}
+                    {Array.from({
+                      length: Math.max(
+                        0,
+                        visibleLobbySlots - rankedPlayers.length,
+                      ),
+                    }).map((_, i) => (
+                      <div key={`empty-${i}`} className="slot-empty">
+                        <i>+</i>
+                        <span>Leer</span>
+                        <small>Wartet auf Teilnehmer</small>
+                      </div>
+                    ))}
+                  </div>
+                </UiScrollArea>
+              </UiCardContent>
+              <UiDialog
+                open={Boolean(correctionPlayer)}
+                onOpenChange={(open) => {
+                  if (!open) setCorrectionPlayerId("");
+                }}
+              >
+                <UiDialogContent className="correction-dialog sm:max-w-3xl">
+                  <UiDialogHeader>
+                    <UiDialogTitle>Teilnehmer bearbeiten</UiDialogTitle>
+                  </UiDialogHeader>
+                  {correctionPlayer && (
+                    <>
+                      <PlayerEditorHeader
+                        player={correctionPlayer}
+                        matchCount={correctionMatches.length}
+                        save={(name) =>
+                          mutate(
+                            `/admin/players/${correctionPlayer.id}`,
+                            {
+                              method: "PATCH",
+                              body: JSON.stringify({ name }),
+                            },
+                            "Name geändert.",
+                          )
+                        }
+                      />
+                      <div className="correction-section-heading">
+                        <div>
+                          <h3>Spielhistorie</h3>
+                          <p>Abgeschlossene Spiele, neueste Runde zuerst.</p>
+                        </div>
+                      </div>
+                      {correctionMatches.length ? (
+                        <div className="correction-list">
+                          {correctionMatches.map(({ round, match }) => (
+                            <ScoreCorrection
+                              key={match.id}
+                              round={round}
+                              match={match}
+                              players={pm}
+                              playerId={correctionPlayer.id}
+                              save={(a, b) =>
+                                mutate(
+                                  `/admin/matches/${match.id}/result`,
+                                  {
+                                    method: "PUT",
+                                    body: JSON.stringify({
+                                      teamAGames: a,
+                                      teamBGames: b,
+                                    }),
+                                  },
+                                  "Spielstand korrigiert.",
+                                )
+                              }
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="correction-empty">
+                          Für diesen Teilnehmer gibt es noch keinen früheren
+                          Spielstand.
+                        </p>
+                      )}
+                    </>
+                  )}
+                  <UiDialogFooter>
+                    <UiDialogClose asChild>
+                      <UiButton variant="outline">Schließen</UiButton>
+                    </UiDialogClose>
+                  </UiDialogFooter>
+                </UiDialogContent>
+              </UiDialog>
+            </UiCard>
+            <UiCard className="control-leaderboard">
+              <UiCardHeader>
+                <UiCardTitle>Bestenliste</UiCardTitle>
+                <UiCardAction>
+                  <Trophy />
+                </UiCardAction>
+              </UiCardHeader>
+              <UiCardContent>
+                <Leaderboard players={data.leaderboard} />
+              </UiCardContent>
+            </UiCard>
+            <UiSeparator />
+            <UiButton
+              variant="ghost"
+              onClick={() =>
+                mutate(
+                  `/admin/events/${id}`,
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify({ status: "archived" }),
+                  },
+                  "Veranstaltung archiviert.",
+                )
+              }
+            >
+              <Archive data-icon="inline-start" /> Archivieren
+            </UiButton>
+            <DeleteEventDialog
+              event={data.event}
+              onDeleted={() => nav("/admin")}
+            />
+          </aside>
+        </div>
       </div>
     </UiTooltipProvider>
   );
@@ -1606,36 +1781,50 @@ function PublicEvent() {
       ),
       opps = (a ? ids.slice(2) : ids.slice(0, 2)).map(p);
     detail = (
-      <div className="assignment">
-        <div className="assignment-court">
-          <span>Platz</span>
-          <strong>{match.court_number}</strong>
-        </div>
-        <div className="assignment-player">
-          <span>Du spielst</span>
-          <h2>
-            {p(selected).emoji} {p(selected).display_name}
-          </h2>
-        </div>
-        <div className="assignment-info">
-          <section>
-            <span>Partner</span>
-            <strong>
-              {partner.emoji} {partner.display_name}
-            </strong>
+      <article className="assignment public-court-card">
+        <header className="public-court-header">
+          <div>
+            <span>Deine Paarung</span>
+            <strong>Platz {match.court_number}</strong>
+          </div>
+          <TennisBall aria-hidden="true" />
+        </header>
+        <div
+          className="public-court-board"
+          aria-label={`Platz ${match.court_number}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
+        >
+          <section className="public-court-team public-court-team-own">
+            <span className="public-court-team-label">Dein Team</span>
+            <div className="public-court-players">
+              <div className="public-court-player is-you">
+                <i>{p(selected).emoji}</i>
+                <strong>{p(selected).display_name}</strong>
+                <small>Du</small>
+              </div>
+              <div className="public-court-player">
+                <i>{partner.emoji}</i>
+                <strong>{partner.display_name}</strong>
+                <small>Partner</small>
+              </div>
+            </div>
           </section>
-          <section>
-            <span>Gegner</span>
-            <strong>
-              {opps.map((x) => (
-                <i key={x.id}>
-                  {x.emoji} {x.display_name}
-                </i>
+          <div className="public-court-versus" aria-hidden="true">
+            <span>gegen</span>
+          </div>
+          <section className="public-court-team">
+            <span className="public-court-team-label">Gegner</span>
+            <div className="public-court-players">
+              {opps.map((opponent) => (
+                <div className="public-court-player" key={opponent.id}>
+                  <i>{opponent.emoji}</i>
+                  <strong>{opponent.display_name}</strong>
+                  <small>Gegner</small>
+                </div>
               ))}
-            </strong>
+            </div>
           </section>
         </div>
-      </div>
+      </article>
     );
   }
   return (
