@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
+    "@fontsource-variable/roboto-flex": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/themes": "^3.3.0",
     "class-variance-authority": "^0.7.1",
