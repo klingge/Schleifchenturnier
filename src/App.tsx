@@ -23,6 +23,7 @@ import {
   Copy,
   Link,
   LockKey,
+  Minus,
   Pause,
   PencilSimple,
   Play,
@@ -511,6 +512,7 @@ function Leaderboard({
       {players.map((p) => (
         <button
           key={p.id}
+          data-rank={p.rank <= 3 ? p.rank : undefined}
           className={selected === p.id ? "selected" : ""}
           disabled={!onSelect}
           onClick={() => onSelect?.(p.id)}
@@ -550,7 +552,7 @@ function QR({ url }: { url: string }) {
         QRCode.toDataURL(url, {
           width: 420,
           margin: 2,
-          color: { dark: "#0f3d78", light: "#ffffff" },
+          color: { dark: "#000000", light: "#ffffff" },
         }).then(setImg)
       }
     >
@@ -1246,7 +1248,7 @@ function EventAdmin() {
         method: "POST",
         body: JSON.stringify({ durationMinutes: duration, courtCount: courts }),
       },
-      "Paarungen veröffentlicht.",
+      "Doppel ausgelost und veröffentlicht.",
     );
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1321,13 +1323,13 @@ function EventAdmin() {
                   : round.state === "results"
                     ? "Ergebnisse eintragen"
                     : round.state === "published"
-                      ? "Paarungen veröffentlicht"
+                      ? "Doppel veröffentlicht"
                       : "Runde läuft"}
               </UiCardTitle>
               <UiCardDescription>
                 {round && round.state !== "completed"
                   ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
-                  : "Konfiguration prüfen und anschließend neue Paarungen erstellen."}
+                  : "Konfiguration prüfen und anschließend neue Doppel auslosen."}
               </UiCardDescription>
             </UiCardHeader>
             <UiCardContent>
@@ -1337,14 +1339,43 @@ function EventAdmin() {
                     <UiFieldLabel htmlFor="round-duration">
                       <Timer /> Rundendauer
                     </UiFieldLabel>
-                    <UiInput
-                      id="round-duration"
-                      type="number"
-                      min="1"
-                      max="240"
-                      value={duration}
-                      onChange={(e) => setDuration(+e.target.value)}
-                    />
+                    <div className="duration-stepper">
+                      <UiButton
+                        type="button"
+                        size="icon-lg"
+                        variant="outline"
+                        aria-label="Rundendauer um 5 Minuten verringern"
+                        disabled={duration <= 1}
+                        onClick={() =>
+                          setDuration((current) => Math.max(1, current - 5))
+                        }
+                      >
+                        <Minus />
+                      </UiButton>
+                      <UiInput
+                        id="round-duration"
+                        className="duration-stepper-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        max="240"
+                        value={duration}
+                        aria-label="Rundendauer in Minuten"
+                        onChange={(e) => setDuration(+e.target.value)}
+                      />
+                      <UiButton
+                        type="button"
+                        size="icon-lg"
+                        variant="outline"
+                        aria-label="Rundendauer um 5 Minuten erhöhen"
+                        disabled={duration >= 240}
+                        onClick={() =>
+                          setDuration((current) => Math.min(240, current + 5))
+                        }
+                      >
+                        <Plus />
+                      </UiButton>
+                    </div>
                   </UiField>
                   <UiField orientation="horizontal">
                     <UiFieldTitle>Plätze</UiFieldTitle>
@@ -1440,8 +1471,7 @@ function EventAdmin() {
                   disabled={activePlayers < 4}
                   onClick={generate}
                 >
-                  <ArrowClockwise data-icon="inline-start" /> Paarungen
-                  erstellen
+                  <ArrowClockwise data-icon="inline-start" /> Doppel auslosen
                 </UiButton>
               )}
               {round?.state === "results" && (
@@ -1685,13 +1715,25 @@ function PublicEvent() {
     [error, setError] = useState(""),
     [selected, setSelected] = useState("");
   const detailRef = useRef<HTMLElement>(null);
-  const load = () =>
+  const load = (background = false) =>
     api<EventData>(`/public/events/${slug}`)
-      .then(setData)
-      .catch((x) => setError(x.message));
+      .then((next) => {
+        setData(next);
+        setError("");
+      })
+      .catch((x) => {
+        if (!background) setError(x.message);
+      });
   useEffect(() => {
     void load();
   }, [slug]);
+  useEffect(() => {
+    if (!data || data.rounds.length > 0) return;
+    const timer = window.setInterval(() => {
+      void load(true);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [slug, data?.rounds.length]);
   useEffect(() => {
     if (!selected) return;
     detailRef.current?.scrollIntoView({
@@ -1700,7 +1742,7 @@ function PublicEvent() {
         ? "auto"
         : "smooth",
     });
-  }, [selected]);
+  }, [selected, data?.currentRound?.id]);
   const match = useMemo(
     () =>
       data?.currentRound?.matches.find((m) =>
@@ -1726,6 +1768,8 @@ function PublicEvent() {
       </Shell>
     );
   const currentRound = data.currentRound;
+  const initialLobby = data.rounds.length === 0;
+  const lobbyPlayers = data.players.filter((player) => player.active);
   const selectedPlayer = data.players.find((x) => x.id === selected);
   const p = (id: string) => data.players.find((x) => x.id === id)!;
   let detail = (
@@ -1793,6 +1837,14 @@ function PublicEvent() {
           className="public-court-board"
           aria-label={`Platz ${match.court_number}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
         >
+          <div className="public-court-lines" aria-hidden="true">
+            <span className="court-line court-line-singles-left" />
+            <span className="court-line court-line-singles-right" />
+            <span className="court-line court-line-service-top" />
+            <span className="court-line court-line-service-bottom" />
+            <span className="court-line court-line-service-center" />
+            <span className="court-line court-line-net" />
+          </div>
           <section className="public-court-team public-court-team-own">
             <span className="public-court-team-label">Dein Team</span>
             <div className="public-court-players">
@@ -1842,38 +1894,79 @@ function PublicEvent() {
                 : "Namen antippen, Zuweisung sehen"}
             </p>
           </div>
-          <Button className="public-refresh" variant="soft" onClick={load}>
+          <Button
+            className="public-refresh"
+            variant="soft"
+            onClick={() => void load()}
+          >
             <ArrowClockwise /> Aktualisieren
           </Button>
         </div>
-        {!currentRound && (
-          <div className="public-lobby">
-            <img src={sgaLogo} alt="SG Arheilgen Tennis" />
-            <div>
-              <strong>Lobby ge{"\u00f6"}ffnet</strong>
-              <span>Die n{"\u00e4"}chsten Paarungen erscheinen hier.</span>
-            </div>
+        {initialLobby ? (
+          <section className="public-lobby-roster" aria-live="polite">
+            <header>
+              <div>
+                <h2>Lobby geöffnet</h2>
+                <p>
+                  {lobbyPlayers.length === 1
+                    ? "1 Teilnehmer ist dabei"
+                    : `${lobbyPlayers.length} Teilnehmer sind dabei`}
+                </p>
+              </div>
+              <span className="public-lobby-live">
+                <i aria-hidden="true" />
+                Aktualisiert automatisch
+              </span>
+            </header>
+            {lobbyPlayers.length ? (
+              <div className="public-lobby-grid">
+                {lobbyPlayers.map((player) => (
+                  <button
+                    type="button"
+                    key={player.id}
+                    className={selected === player.id ? "selected" : ""}
+                    aria-pressed={selected === player.id}
+                    onClick={() => setSelected(player.id)}
+                  >
+                    <i>{player.emoji}</i>
+                    <strong>{player.display_name}</strong>
+                    {selected === player.id && (
+                      <span>
+                        <Check aria-hidden="true" /> Du
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="public-lobby-empty">
+                <Users aria-hidden="true" />
+                <strong>Noch niemand eingetragen</strong>
+                <p>Neue Teilnehmer erscheinen hier automatisch.</p>
+              </div>
+            )}
+          </section>
+        ) : (
+          <div className="public">
+            <section className="panel detail" ref={detailRef} aria-live="polite">
+              {detail}
+            </section>
+            <section className="panel public-rank-panel">
+              <div className="title">
+                <div>
+                  <h2>Bestenliste</h2>
+                  <span className="title-note">Tippe deinen Namen an</span>
+                </div>
+                <Trophy />
+              </div>
+              <Leaderboard
+                players={data.leaderboard}
+                selected={selected}
+                onSelect={setSelected}
+              />
+            </section>
           </div>
         )}
-        <div className="public">
-          <section className="panel detail" ref={detailRef} aria-live="polite">
-            {detail}
-          </section>
-          <section className="panel public-rank-panel">
-            <div className="title">
-              <div>
-                <h2>Bestenliste</h2>
-                <span className="title-note">Tippe deinen Namen an</span>
-              </div>
-              <Trophy />
-            </div>
-            <Leaderboard
-              players={data.leaderboard}
-              selected={selected}
-              onSelect={setSelected}
-            />
-          </section>
-        </div>
       </div>
     </Shell>
   );

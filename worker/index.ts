@@ -173,7 +173,9 @@ async function loadEvent(db: D1Database, eventId: string, publicOnly = false) {
 
 async function loadPublicEvent(db: D1Database, slug: string) {
   const event = await db
-    .prepare("SELECT * FROM events WHERE public_slug = ? AND status = 'active'")
+    .prepare(
+      "SELECT * FROM events WHERE public_slug = ? AND status IN ('lobby', 'active')",
+    )
     .bind(slug)
     .first<DbRow>();
   return event ? assembleEvent(db, event) : null;
