@@ -173,7 +173,9 @@ async function loadEvent(db: D1Database, eventId: string, publicOnly = false) {
 
 async function loadPublicEvent(db: D1Database, slug: string) {
   const event = await db
-    .prepare("SELECT * FROM events WHERE public_slug = ? AND status = 'active'")
+    .prepare(
+      "SELECT * FROM events WHERE public_slug = ? AND status IN ('lobby', 'active')",
+    )
     .bind(slug)
     .first<DbRow>();
   return event ? assembleEvent(db, event) : null;
@@ -274,6 +276,11 @@ async function assembleEvent(db: D1Database, event: DbRow) {
   const hydratedRounds: DbRow[] = rounds.map((round) => ({
     ...round,
     matches: matches.filter((match) => match.round_id === round.id),
+    sitting_out_player_ids: participation
+      .filter(
+        (item) => item.round_id === round.id && item.status === "sitting_out",
+      )
+      .map((item) => String(item.player_id)),
   }));
   return {
     event,
@@ -655,8 +662,8 @@ admin.post("/rounds/:id/action", async (c) => {
 admin.put("/matches/:id/result", async (c) => {
   const input = z
     .object({
-      teamAGames: z.coerce.number().int().min(0).max(6),
-      teamBGames: z.coerce.number().int().min(0).max(6),
+      teamAGames: z.coerce.number().int().min(0),
+      teamBGames: z.coerce.number().int().min(0),
     })
     .safeParse(await c.req.json().catch(() => ({})));
   if (!input.success || input.data.teamAGames === input.data.teamBGames)
@@ -665,12 +672,19 @@ admin.put("/matches/:id/result", async (c) => {
       400,
     );
   const match = await c.env.DB.prepare(
-    "SELECT result_locked_at FROM matches WHERE id = ?",
+    "SELECT rounds.state FROM matches JOIN rounds ON rounds.id = matches.round_id WHERE matches.id = ?",
   )
     .bind(c.req.param("id"))
-    .first<{ result_locked_at: string | null }>();
-  if (!match || match.result_locked_at)
-    return c.json({ error: "Dieses Ergebnis ist gesperrt." }, 409);
+    .first<{ state: string }>();
+  if (!match) return c.json({ error: "Match nicht gefunden." }, 404);
+  if (!["results", "completed"].includes(match.state))
+    return c.json(
+      {
+        error:
+          "Dieses Ergebnis kann im aktuellen Rundenstatus nicht ge\u00e4ndert werden.",
+      },
+      409,
+    );
   await c.env.DB.prepare(
     "UPDATE matches SET team_a_games = ?, team_b_games = ?, result_type = 'played' WHERE id = ?",
   )

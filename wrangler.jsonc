@@ -15,12 +15,6 @@
 			"database_name": "sga-sommerfest",
 			"database_id": "9526e1cc-b3fb-4d0e-beb6-85de863df824",
 			"migrations_dir": "migrations"
-		},
-		{
-			"binding": "sga_sommerfest",
-			"database_name": "sga-sommerfest",
-			"database_id": "9526e1cc-b3fb-4d0e-beb6-85de863df824",
-			"remote": true
 		}
 	]
 }
