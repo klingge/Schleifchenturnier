@@ -38,6 +38,7 @@ import {
 } from "@phosphor-icons/react";
 import QRCode from "qrcode";
 import hairBow from "./assets/hair-bow.png";
+import raffleBox from "./assets/raffle-box.png";
 import sgaLogo from "./assets/sga-logo.png";
 import {
   AlertDialog as UiAlertDialog,
@@ -254,7 +255,7 @@ function Login({ done }: { done: () => void }) {
       <div className="login">
         <section>
           <Badge color="blue">Turnierleitung</Badge>
-          <h1>Sommerfest auf Platz.</h1>
+          <h1>SGA Sommerfest</h1>
           <p>
             Spieler eintragen, faire Doppel auslosen und Ergebnisse direkt
             festhalten.
@@ -1315,11 +1316,13 @@ function EventAdmin() {
           </UiAlert>
         )}
         <div className={cn("control-desk", lobbyOpen && "is-lobby")}>
-          <UiCard className="control-stage">
+          <UiCard
+            className={cn("control-stage", lobbyOpen && "is-draw-stage")}
+          >
             <UiCardHeader>
               <UiCardTitle>
                 {!round || round.state === "completed"
-                  ? "Nächste Runde vorbereiten"
+                  ? "Nächste Runde auslosen"
                   : round.state === "results"
                     ? "Ergebnisse eintragen"
                     : round.state === "published"
@@ -1329,7 +1332,7 @@ function EventAdmin() {
               <UiCardDescription>
                 {round && round.state !== "completed"
                   ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
-                  : "Konfiguration prüfen und anschließend neue Doppel auslosen."}
+                  : "Wer spielt als Nächstes zusammen?"}
               </UiCardDescription>
             </UiCardHeader>
             <UiCardContent>
@@ -1337,7 +1340,7 @@ function EventAdmin() {
                 <UiFieldGroup className="control-settings">
                   <UiField orientation="horizontal">
                     <UiFieldLabel htmlFor="round-duration">
-                      <Timer /> Rundendauer
+                      Rundendauer
                     </UiFieldLabel>
                     <div className="duration-stepper">
                       <UiButton
@@ -1418,8 +1421,20 @@ function EventAdmin() {
                     <Play data-icon="inline-start" weight="fill" /> Runde
                     starten
                   </UiButton>
-                  <UiButton size="sm" variant="ghost" onClick={generate}>
-                    <ArrowClockwise data-icon="inline-start" /> Neu auslosen
+                  <UiButton
+                    className="redraw-action"
+                    size="sm"
+                    variant="ghost"
+                    onClick={generate}
+                  >
+                    <img
+                      className="raffle-box-inline-icon"
+                      src={raffleBox}
+                      alt=""
+                      aria-hidden="true"
+                      data-icon="inline-start"
+                    />
+                    Neu auslosen
                   </UiButton>
                 </div>
               )}
@@ -1467,11 +1482,19 @@ function EventAdmin() {
             <UiCardFooter className="control-stage-footer">
               {(!round || round.state === "completed") && (
                 <UiButton
+                  className="draw-action"
                   size="lg"
                   disabled={activePlayers < 4}
                   onClick={generate}
                 >
-                  <ArrowClockwise data-icon="inline-start" /> Doppel auslosen
+                  <span className="draw-action-icon" aria-hidden="true">
+                    <img
+                      className="raffle-box-icon"
+                      src={raffleBox}
+                      alt=""
+                    />
+                  </span>
+                  <span className="draw-action-label">Doppel auslosen</span>
                 </UiButton>
               )}
               {round?.state === "results" && (
@@ -1713,8 +1736,10 @@ function PublicEvent() {
   const { slug = "" } = useParams();
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState(""),
-    [selected, setSelected] = useState("");
+    [selected, setSelected] = useState(""),
+    [refreshing, setRefreshing] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
+  const refreshingRef = useRef(false);
   const load = (background = false) =>
     api<EventData>(`/public/events/${slug}`)
       .then((next) => {
@@ -1724,6 +1749,20 @@ function PublicEvent() {
       .catch((x) => {
         if (!background) setError(x.message);
       });
+  const refresh = async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        load(),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 450)),
+      ]);
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  };
   useEffect(() => {
     void load();
   }, [slug]);
@@ -1828,7 +1867,7 @@ function PublicEvent() {
       <article className="assignment public-court-card">
         <header className="public-court-header">
           <div>
-            <span>Deine Paarung</span>
+            <span>Du spielst auf</span>
             <strong>Platz {match.court_number}</strong>
           </div>
           <TennisBall aria-hidden="true" />
@@ -1838,8 +1877,6 @@ function PublicEvent() {
           aria-label={`Platz ${match.court_number}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
         >
           <div className="public-court-lines" aria-hidden="true">
-            <span className="court-line court-line-singles-left" />
-            <span className="court-line court-line-singles-right" />
             <span className="court-line court-line-service-top" />
             <span className="court-line court-line-service-bottom" />
             <span className="court-line court-line-service-center" />
@@ -1861,10 +1898,9 @@ function PublicEvent() {
             </div>
           </section>
           <div className="public-court-versus" aria-hidden="true">
-            <span>gegen</span>
+            <span>vs</span>
           </div>
-          <section className="public-court-team">
-            <span className="public-court-team-label">Gegner</span>
+          <section className="public-court-team public-court-team-opponents">
             <div className="public-court-players">
               {opps.map((opponent) => (
                 <div className="public-court-player" key={opponent.id}>
@@ -1882,6 +1918,21 @@ function PublicEvent() {
   return (
     <Shell>
       <div className="public-screen">
+        <div className="public-refresh-dock">
+          <Button
+            className={cn("public-refresh", refreshing && "is-refreshing")}
+            variant="soft"
+            disabled={refreshing}
+            aria-busy={refreshing}
+            onClick={() => void refresh()}
+          >
+            <ArrowClockwise
+              className="public-refresh-icon"
+              aria-hidden="true"
+            />
+            <span>{refreshing ? "Aktualisiere…" : "Aktualisieren"}</span>
+          </Button>
+        </div>
         <div className="heading public-hero">
           <div>
             <p className="kicker">
@@ -1894,13 +1945,6 @@ function PublicEvent() {
                 : "Namen antippen, Zuweisung sehen"}
             </p>
           </div>
-          <Button
-            className="public-refresh"
-            variant="soft"
-            onClick={() => void load()}
-          >
-            <ArrowClockwise /> Aktualisieren
-          </Button>
         </div>
         {initialLobby ? (
           <section className="public-lobby-roster" aria-live="polite">
