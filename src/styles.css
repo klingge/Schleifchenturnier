@@ -1108,6 +1108,7 @@ label {
 }
 
 .match footer {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
@@ -1117,10 +1118,50 @@ label {
   margin-top: var(--space-3);
 }
 
+.match footer::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 28px;
+  left: calc(50% - 0.5px);
+  width: 1px;
+  background: var(--line);
+}
+
 .score-entry {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: var(--space-2);
   min-width: 0;
+  border: 1px solid color-mix(in oklch, var(--line) 82%, white);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface) 86%, white);
+  padding: var(--space-2);
+}
+
+.score-entry.is-left {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--primary-soft) 34%, white),
+    color-mix(in oklch, var(--surface) 90%, white)
+  );
+}
+
+.score-entry.is-right {
+  background: linear-gradient(
+    270deg,
+    color-mix(in oklch, var(--primary-soft) 34%, white),
+    color-mix(in oklch, var(--surface) 90%, white)
+  );
+}
+
+.score-entry-label {
+  color: var(--primary-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .score-picker {
@@ -1165,6 +1206,8 @@ label {
 }
 
 .save-state {
+  position: relative;
+  z-index: 1;
   grid-column: 1 / -1;
   color: var(--muted);
   font-weight: 750;
@@ -2202,6 +2245,10 @@ label {
 
   .match footer {
     grid-template-columns: 1fr;
+  }
+
+  .match footer::before {
+    display: none;
   }
 
   .score-picker {
