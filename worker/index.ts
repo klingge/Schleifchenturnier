@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
+import { isConfigurationLocked } from "./admin-policy";
 import { generateMatches, pairKey, type MatchHistory } from "./matchmaker";
 
 type Bindings = {
@@ -18,6 +19,26 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath(
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
 const encoder = new TextEncoder();
+
+async function latestRoundState(db: D1Database, eventId: string) {
+  const round = await db
+    .prepare(
+      "SELECT state FROM rounds WHERE event_id = ? AND state <> 'discarded' ORDER BY round_number DESC LIMIT 1",
+    )
+    .bind(eventId)
+    .first<{ state: string }>();
+  return round?.state ?? null;
+}
+
+async function configurationIsLocked(db: D1Database, eventId: string) {
+  return isConfigurationLocked(await latestRoundState(db, eventId));
+}
+
+const roundLockedBody = {
+  error:
+    "Teilnehmer und Plätze können erst nach Abschluss der aktuellen Runde geändert werden.",
+  code: "round_locked",
+};
 
 const eventInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -436,6 +457,8 @@ admin.post("/events/:id/players", async (c) => {
       { error: "Bitte einen Namen mit höchstens 40 Zeichen eingeben." },
       400,
     );
+  if (await configurationIsLocked(c.env.DB, c.req.param("id")))
+    return c.json(roundLockedBody, 409);
   const used = new Set(
     (
       await rows(
@@ -471,6 +494,8 @@ admin.patch("/players/:id", async (c) => {
     .bind(c.req.param("id"))
     .first<{ event_id: string }>();
   if (!player) return c.json({ error: "Spieler nicht gefunden." }, 404);
+  if (await configurationIsLocked(c.env.DB, player.event_id))
+    return c.json(roundLockedBody, 409);
   await c.env.DB.prepare(
     "UPDATE players SET display_name = COALESCE(?, display_name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
   )
@@ -496,6 +521,8 @@ admin.post("/events/:id/courts", async (c) => {
     .bind(eventId)
     .first();
   if (!event) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  if (await configurationIsLocked(c.env.DB, eventId))
+    return c.json(roundLockedBody, 409);
   const existing = await rows(
     c.env.DB.prepare(
       "SELECT id, name, position FROM courts WHERE event_id = ? ORDER BY position",
@@ -545,6 +572,8 @@ admin.patch("/courts/:id", async (c) => {
     .bind(c.req.param("id"))
     .first<{ id: string; event_id: string }>();
   if (!court) return c.json({ error: "Platz nicht gefunden." }, 404);
+  if (await configurationIsLocked(c.env.DB, court.event_id))
+    return c.json(roundLockedBody, 409);
   if (input.data.name !== undefined) {
     const duplicate = await c.env.DB.prepare(
       "SELECT id FROM courts WHERE event_id = ? AND name = ? COLLATE NOCASE AND id <> ?",
@@ -568,31 +597,14 @@ admin.patch("/courts/:id", async (c) => {
 });
 
 admin.delete("/courts/:id", async (c) => {
-  const court = await c.env.DB.prepare(
-    "SELECT id, event_id, position FROM courts WHERE id = ?",
-  )
-    .bind(c.req.param("id"))
-    .first<{ id: string; event_id: string; position: number }>();
-  if (!court) return c.json({ error: "Platz nicht gefunden." }, 404);
-  const followingCourts = await rows(
-    c.env.DB.prepare(
-      "SELECT id, position FROM courts WHERE event_id = ? AND position > ? ORDER BY position",
-    ).bind(court.event_id, court.position),
+  return c.json(
+    {
+      error:
+        "Plätze können nicht gelöscht werden. Deaktiviere den Platz stattdessen.",
+      code: "court_deletion_disabled",
+    },
+    405,
   );
-  const timestamp = now();
-  await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM courts WHERE id = ?").bind(court.id),
-    ...followingCourts.map((following) =>
-      c.env.DB.prepare(
-        "UPDATE courts SET position = ?, updated_at = ? WHERE id = ?",
-      ).bind(
-        Number(following.position) - 1,
-        timestamp,
-        String(following.id),
-      ),
-    ),
-  ]);
-  return c.json(await loadEvent(c.env.DB, court.event_id));
 });
 
 async function buildHistory(data: Awaited<ReturnType<typeof loadEvent>>) {

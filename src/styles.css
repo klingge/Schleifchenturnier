@@ -764,8 +764,7 @@ label {
 .ranking > button[data-rank="3"] {
   border-color: oklch(68% 0.09 52);
   background:
-    linear-gradient(90deg, oklch(95% 0.035 55), oklch(100% 0 0)),
-    var(--surface);
+    linear-gradient(90deg, oklch(95% 0.035 55), oklch(100% 0 0)), var(--surface);
 }
 
 .ranking > button:not(:disabled) {
@@ -2377,7 +2376,6 @@ label {
     justify-self: end;
     justify-items: end;
   }
-
 }
 
 @media (max-width: 360px) {
@@ -2739,27 +2737,24 @@ label {
   flex: 0 0 auto;
 }
 
-.court-list {
+.court-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.court-visual-card {
   display: grid;
   gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  padding: var(--space-2);
 }
 
-.court-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 48px;
-  border-bottom: 1px solid var(--border);
-  padding-block: var(--space-1);
-}
-
-.court-row:last-child {
-  border-bottom: 0;
-}
-
-.court-row.off {
+.court-visual-card.off {
   color: var(--muted-foreground);
+  background: var(--muted);
 }
 
 .court-open {
@@ -2775,12 +2770,84 @@ label {
   cursor: pointer;
 }
 
+.court-open:disabled {
+  cursor: default;
+}
+
+.court-surface {
+  position: relative;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  min-height: 96px;
+  width: 100%;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.court-surface:not(:disabled):hover {
+  background: var(--primary-soft);
+}
+
+.court-diagram {
+  position: relative;
+  display: block;
+  width: 70px;
+  height: 48px;
+  border: 2px solid color-mix(in oklch, var(--primary) 72%, white);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 1px),
+      color-mix(in oklch, var(--primary) 62%, white) calc(50% - 1px),
+      color-mix(in oklch, var(--primary) 62%, white) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      0deg,
+      transparent calc(50% - 1px),
+      color-mix(in oklch, var(--primary) 50%, white) calc(50% - 1px),
+      color-mix(in oklch, var(--primary) 50%, white) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    var(--primary-soft);
+}
+
+.court-net {
+  position: absolute;
+  inset-block: -5px;
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.court-card-label {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
 .court-open strong {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.court-card-label small {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.court-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
 }
 
 .court-open > svg:last-child {
@@ -2983,5 +3050,194 @@ label {
   .participant-scroll,
   .control-desk.is-lobby .participant-scroll {
     max-height: none;
+  }
+}
+
+.control-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.event-menu {
+  position: relative;
+}
+
+.event-menu > summary {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  list-style: none;
+}
+
+.event-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-menu > summary:hover,
+.event-menu > summary:focus-visible {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.event-menu > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.event-menu-content {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: grid;
+  width: 220px;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  padding: var(--space-2);
+  box-shadow: 0 6px 8px color-mix(in oklch, var(--ink) 12%, transparent);
+}
+
+.event-menu-content > button,
+.event-menu-content [data-slot="alert-dialog-trigger"] {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.event-tabs {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  padding-inline: var(--space-1);
+}
+
+.event-tabs a {
+  min-height: 48px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  border-bottom: 3px solid transparent;
+  padding: var(--space-2) var(--space-4);
+  color: var(--muted-foreground);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.event-tabs a:hover {
+  color: var(--foreground);
+}
+
+.event-tabs a.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.event-tabs a:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.control-desk,
+.control-desk.is-lobby {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.control-tab-panel {
+  min-width: 0;
+}
+
+.control-tab-panel > [data-slot="card"] {
+  width: 100%;
+}
+
+.control-dashboard .control-stage,
+.control-desk.is-lobby .control-stage {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.dashboard-matches {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-matches .match-board {
+  min-height: 284px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.dashboard-matches .team-players {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-matches .score-versus {
+  min-height: 44px;
+}
+
+.dashboard-matches .score-versus strong {
+  min-width: 88px;
+  font-size: 1.45rem;
+}
+
+.configuration-lock {
+  background: var(--muted);
+}
+
+.control-participants .participant-scroll {
+  height: auto;
+  max-height: 62dvh;
+}
+
+.control-participants .control-players {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 1100px) {
+  .dashboard-matches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-matches,
+  .control-participants .control-players {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .event-tabs a {
+    padding-inline: var(--space-3);
+  }
+
+  .dashboard-matches .match-board {
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 620px) {
+  .control-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .event-menu-content {
+    right: auto;
+    left: 0;
+  }
+
+  .dashboard-matches .team-players {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
