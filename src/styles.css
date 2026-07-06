@@ -1060,18 +1060,12 @@ label {
 
 .match footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
   gap: var(--space-2);
   align-items: start;
   border-top: 1px solid var(--line);
   padding-top: var(--space-3);
   margin-top: var(--space-3);
-}
-
-.match footer > button {
-  grid-column: 2;
-  grid-row: 1;
-  margin-top: 0;
 }
 
 .score-entry {
@@ -1123,6 +1117,40 @@ label {
   grid-column: 1 / -1;
   color: var(--muted);
   font-weight: 750;
+}
+
+.score-save-indicator {
+  display: grid;
+  width: 40px;
+  min-height: 34px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.score-save-indicator svg {
+  width: 18px;
+  height: 18px;
+}
+
+.score-save-indicator.saved {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+}
+
+.score-save-indicator.saving {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.score-save-indicator.failed {
+  border-color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 10%, white);
+  color: var(--danger);
 }
 
 .save-state.saved {
@@ -2157,12 +2185,6 @@ label {
 
   .match footer {
     grid-template-columns: 1fr;
-  }
-
-  .match footer > button {
-    grid-column: 1;
-    width: 100%;
-    margin-top: 0;
   }
 
   .score-picker {
