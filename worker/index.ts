@@ -26,12 +26,11 @@ const eventInput = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   durationMinutes: z.coerce.number().int().min(1).max(240),
-  courtCount: z.coerce.number().int().min(1).max(13),
 });
 const playerInput = z.object({ name: z.string().trim().min(1).max(40) });
+const courtInput = z.object({ name: z.string().trim().min(1).max(40) });
 const generateInput = z.object({
   durationMinutes: z.coerce.number().int().min(1).max(240),
-  courtCount: z.coerce.number().int().min(1).max(13),
 });
 
 function base64Url(bytes: ArrayBuffer | Uint8Array) {
@@ -188,6 +187,11 @@ async function assembleEvent(db: D1Database, event: DbRow) {
       .prepare("SELECT * FROM players WHERE event_id = ? ORDER BY created_at")
       .bind(eventId),
   );
+  const courts = await rows(
+    db
+      .prepare("SELECT * FROM courts WHERE event_id = ? ORDER BY position")
+      .bind(eventId),
+  );
   const rounds = await rows(
     db
       .prepare(
@@ -285,6 +289,7 @@ async function assembleEvent(db: D1Database, event: DbRow) {
   return {
     event,
     players,
+    courts,
     leaderboard,
     rounds: hydratedRounds,
     currentRound: hydratedRounds.at(-1) ?? null,
@@ -347,7 +352,11 @@ const emojis = [
 admin.get("/events", async (c) => {
   const events = await rows(
     c.env.DB.prepare(
-      "SELECT * FROM events ORDER BY event_date DESC, created_at DESC",
+      `SELECT events.*, COUNT(courts.id) AS court_count
+       FROM events
+       LEFT JOIN courts ON courts.event_id = events.id
+       GROUP BY events.id
+       ORDER BY events.event_date DESC, events.created_at DESC`,
     ),
   );
   return c.json({ events, csrf: c.get("csrf") });
@@ -369,7 +378,7 @@ admin.post("/events", async (c) => {
       input.data.name,
       input.data.eventDate ?? timestamp.slice(0, 10),
       input.data.durationMinutes * 60,
-      input.data.courtCount,
+      1,
       timestamp,
       timestamp,
     )
@@ -475,6 +484,117 @@ admin.patch("/players/:id", async (c) => {
   return c.json(await loadEvent(c.env.DB, player.event_id));
 });
 
+admin.post("/events/:id/courts", async (c) => {
+  const input = courtInput.safeParse(await c.req.json().catch(() => ({})));
+  if (!input.success)
+    return c.json(
+      { error: "Bitte einen Platznamen mit höchstens 40 Zeichen eingeben." },
+      400,
+    );
+  const eventId = c.req.param("id");
+  const event = await c.env.DB.prepare("SELECT id FROM events WHERE id = ?")
+    .bind(eventId)
+    .first();
+  if (!event) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  const existing = await rows(
+    c.env.DB.prepare(
+      "SELECT id, name, position FROM courts WHERE event_id = ? ORDER BY position",
+    ).bind(eventId),
+  );
+  if (existing.length >= 13)
+    return c.json(
+      { error: "Pro Veranstaltung sind höchstens 13 Plätze möglich." },
+      400,
+    );
+  const duplicate = await c.env.DB.prepare(
+    "SELECT id FROM courts WHERE event_id = ? AND name = ? COLLATE NOCASE",
+  )
+    .bind(eventId, input.data.name)
+    .first();
+  if (duplicate)
+    return c.json({ error: "Dieser Platzname ist bereits vergeben." }, 409);
+  const timestamp = now();
+  await c.env.DB.prepare(
+    "INSERT INTO courts (id, event_id, name, position, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+  )
+    .bind(
+      id(),
+      eventId,
+      input.data.name,
+      existing.length + 1,
+      timestamp,
+      timestamp,
+    )
+    .run();
+  return c.json(await loadEvent(c.env.DB, eventId), 201);
+});
+
+admin.patch("/courts/:id", async (c) => {
+  const input = z
+    .object({
+      name: z.string().trim().min(1).max(40).optional(),
+      active: z.boolean().optional(),
+    })
+    .refine((value) => value.name !== undefined || value.active !== undefined)
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!input.success)
+    return c.json({ error: "Platzdaten sind ungültig." }, 400);
+  const court = await c.env.DB.prepare(
+    "SELECT id, event_id FROM courts WHERE id = ?",
+  )
+    .bind(c.req.param("id"))
+    .first<{ id: string; event_id: string }>();
+  if (!court) return c.json({ error: "Platz nicht gefunden." }, 404);
+  if (input.data.name !== undefined) {
+    const duplicate = await c.env.DB.prepare(
+      "SELECT id FROM courts WHERE event_id = ? AND name = ? COLLATE NOCASE AND id <> ?",
+    )
+      .bind(court.event_id, input.data.name, court.id)
+      .first();
+    if (duplicate)
+      return c.json({ error: "Dieser Platzname ist bereits vergeben." }, 409);
+  }
+  await c.env.DB.prepare(
+    "UPDATE courts SET name = COALESCE(?, name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
+  )
+    .bind(
+      input.data.name ?? null,
+      input.data.active === undefined ? null : Number(input.data.active),
+      now(),
+      court.id,
+    )
+    .run();
+  return c.json(await loadEvent(c.env.DB, court.event_id));
+});
+
+admin.delete("/courts/:id", async (c) => {
+  const court = await c.env.DB.prepare(
+    "SELECT id, event_id, position FROM courts WHERE id = ?",
+  )
+    .bind(c.req.param("id"))
+    .first<{ id: string; event_id: string; position: number }>();
+  if (!court) return c.json({ error: "Platz nicht gefunden." }, 404);
+  const followingCourts = await rows(
+    c.env.DB.prepare(
+      "SELECT id, position FROM courts WHERE event_id = ? AND position > ? ORDER BY position",
+    ).bind(court.event_id, court.position),
+  );
+  const timestamp = now();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM courts WHERE id = ?").bind(court.id),
+    ...followingCourts.map((following) =>
+      c.env.DB.prepare(
+        "UPDATE courts SET position = ?, updated_at = ? WHERE id = ?",
+      ).bind(
+        Number(following.position) - 1,
+        timestamp,
+        String(following.id),
+      ),
+    ),
+  ]);
+  return c.json(await loadEvent(c.env.DB, court.event_id));
+});
+
 async function buildHistory(data: Awaited<ReturnType<typeof loadEvent>>) {
   const history: MatchHistory = { partners: new Map(), opponents: new Map() };
   if (!data) return history;
@@ -508,7 +628,7 @@ async function buildHistory(data: Awaited<ReturnType<typeof loadEvent>>) {
 admin.post("/events/:id/generate", async (c) => {
   const input = generateInput.safeParse(await c.req.json().catch(() => ({})));
   if (!input.success)
-    return c.json({ error: "Rundendauer oder Platzanzahl ist ungültig." }, 400);
+    return c.json({ error: "Die Rundendauer ist ungültig." }, 400);
   const eventId = c.req.param("id");
   const data = await loadEvent(c.env.DB, eventId);
   if (!data) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
@@ -528,6 +648,14 @@ admin.post("/events/:id/generate", async (c) => {
       },
       400,
     );
+  const activeCourts = data.courts.filter(
+    (court) => Number(court.active) === 1,
+  );
+  if (activeCourts.length === 0)
+    return c.json(
+      { error: "Für eine Auslosung muss mindestens ein Platz aktiv sein." },
+      400,
+    );
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
   const result = generateMatches(
     active.map((player) => ({
@@ -535,7 +663,7 @@ admin.post("/events/:id/generate", async (c) => {
       rank: Number(player.rank),
       sitOuts: Number(player.sitOuts),
     })),
-    input.data.courtCount,
+    activeCourts.length,
     await buildHistory(data),
     seed,
   );
@@ -565,18 +693,28 @@ admin.post("/events/:id/generate", async (c) => {
       roundId,
       eventId,
       roundNumber,
-      input.data.courtCount,
+      activeCourts.length,
       input.data.durationMinutes * 60,
       timestamp,
       seed,
     ),
   );
-  for (const match of result.matches)
+  for (const match of result.matches) {
+    const court = activeCourts[match.court - 1];
     statements.push(
       c.env.DB.prepare(
-        "INSERT INTO matches (id, round_id, court_number, team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).bind(id(), roundId, match.court, ...match.teamA, ...match.teamB),
+        "INSERT INTO matches (id, round_id, court_number, court_id, court_name_snapshot, team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        id(),
+        roundId,
+        match.court,
+        court.id,
+        court.name,
+        ...match.teamA,
+        ...match.teamB,
+      ),
     );
+  }
   for (const player of active)
     statements.push(
       c.env.DB.prepare(

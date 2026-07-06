@@ -10,10 +10,6 @@ import {
   Badge,
   Button,
   Dialog,
-  Flex,
-  IconButton,
-  Select,
-  Switch,
   TextField,
 } from "@radix-ui/themes";
 import {
@@ -81,7 +77,6 @@ import {
   Field as UiField,
   FieldGroup as UiFieldGroup,
   FieldLabel as UiFieldLabel,
-  FieldTitle as UiFieldTitle,
 } from "@/components/ui/field";
 import { Input as UiInput } from "@/components/ui/input";
 import {
@@ -91,14 +86,6 @@ import {
   InputGroupInput as UiInputGroupInput,
 } from "@/components/ui/input-group";
 import { ScrollArea as UiScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select as UiSelect,
-  SelectContent as UiSelectContent,
-  SelectGroup as UiSelectGroup,
-  SelectItem as UiSelectItem,
-  SelectTrigger as UiSelectTrigger,
-  SelectValue as UiSelectValue,
-} from "@/components/ui/select";
 import { Separator as UiSeparator } from "@/components/ui/separator";
 import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
 import { Switch as UiSwitch } from "@/components/ui/switch";
@@ -115,9 +102,16 @@ type Player = {
   sitOuts: number;
   rank: number;
 };
+type Court = {
+  id: string;
+  name: string;
+  position: number;
+  active: number;
+};
 type Match = {
   id: string;
   court_number: number;
+  court_name_snapshot: string | null;
   team_a_player_1_id: string;
   team_a_player_2_id: string;
   team_b_player_1_id: string;
@@ -141,12 +135,13 @@ type EventRow = {
   name: string;
   event_date: string;
   default_round_duration_seconds: number;
-  default_court_count: number;
+  court_count?: number;
   status: string;
 };
 type EventData = {
   event: EventRow;
   players: Player[];
+  courts: Court[];
   leaderboard: Player[];
   rounds: Round[];
   currentRound: Round | null;
@@ -158,6 +153,8 @@ const matchPlayerIds = (match: Match) => [
   match.team_b_player_1_id,
   match.team_b_player_2_id,
 ];
+const courtName = (match: Match) =>
+  match.court_name_snapshot || `Platz ${match.court_number}`;
 let csrf = "";
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -423,17 +420,6 @@ function Dashboard() {
                   required
                 />
               </label>
-              <label>
-                Anzahl Plätze
-                <TextField.Root
-                  name="courtCount"
-                  type="number"
-                  defaultValue="4"
-                  min="1"
-                  max="13"
-                  required
-                />
-              </label>
               <Button>Erstellen</Button>
             </form>
           </Dialog.Content>
@@ -469,7 +455,7 @@ function Dashboard() {
                 <span>
                   <strong>{x.name}</strong>
                   <small>
-                    {x.default_court_count} Plätze,{" "}
+                    {x.court_count ?? 0} Plätze,{" "}
                     {x.default_round_duration_seconds / 60} Minuten
                   </small>
                 </span>
@@ -652,7 +638,7 @@ function MatchCard({
   return (
     <article className="match court-card">
       <header className="court-label">
-        <b>Platz {m.court_number}</b>
+        <b>{courtName(m)}</b>
         {m.result_type === "played" && (
           <UiBadge variant="secondary">Gespeichert</UiBadge>
         )}
@@ -837,7 +823,7 @@ function ScoreCorrection({
           <strong>
             Runde {round.round_number}
             {" \u00b7 "}
-            Platz {match.court_number}
+            {courtName(match)}
           </strong>
           <small>
             {match.result_type === "missing"
@@ -1139,21 +1125,231 @@ function Clock({
   );
 }
 
+function CourtManager({
+  eventId,
+  courts,
+  mutate,
+}: {
+  eventId: string;
+  courts: Court[];
+  mutate: (
+    path: string,
+    init: RequestInit,
+    message?: string,
+  ) => Promise<void>;
+}) {
+  const [editingId, setEditingId] = useState("");
+  const [editingName, setEditingName] = useState("");
+  const editingCourt = courts.find((court) => court.id === editingId);
+  const activeCount = courts.filter((court) => court.active).length;
+
+  async function addCourt(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await mutate(
+      `/admin/events/${eventId}/courts`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: new FormData(form).get("name") }),
+      },
+      "Platz hinzugefügt.",
+    );
+    form.reset();
+  }
+
+  return (
+    <UiCard className="control-courts">
+      <UiCardHeader>
+        <UiCardTitle>Plätze</UiCardTitle>
+        <UiCardDescription>
+          {activeCount} aktiv von {courts.length}
+        </UiCardDescription>
+        <UiCardAction>
+          <TennisBall />
+        </UiCardAction>
+      </UiCardHeader>
+      <UiCardContent>
+        <form onSubmit={addCourt}>
+          <UiFieldGroup>
+            <UiField>
+              <UiFieldLabel className="sr-only" htmlFor="court-name">
+                Platzname
+              </UiFieldLabel>
+              <UiInputGroup>
+                <UiInputGroupInput
+                  id="court-name"
+                  name="name"
+                  placeholder="z. B. Halle 1"
+                  maxLength={40}
+                  disabled={courts.length >= 13}
+                  required
+                />
+                <UiInputGroupAddon align="inline-end">
+                  <UiInputGroupButton
+                    type="submit"
+                    size="icon-xs"
+                    aria-label="Platz hinzufügen"
+                    disabled={courts.length >= 13}
+                  >
+                    <Plus />
+                  </UiInputGroupButton>
+                </UiInputGroupAddon>
+              </UiInputGroup>
+            </UiField>
+          </UiFieldGroup>
+        </form>
+        <div className={cn("court-balance", activeCount > 0 && "ready")}>
+          {activeCount > 0 ? <Check /> : <TennisBall />}
+          <span>
+            {activeCount > 0
+              ? `${activeCount} ${activeCount === 1 ? "Platz ist" : "Plätze sind"} für die nächste Auslosung aktiv.`
+              : "Aktiviere mindestens einen Platz für die nächste Auslosung."}
+          </span>
+        </div>
+        <div className="court-list">
+          {courts.map((court) => (
+            <div
+              key={court.id}
+              className={cn("court-row", !court.active && "off")}
+            >
+              <button
+                type="button"
+                className="court-open"
+                aria-label={`${court.name} umbenennen`}
+                onClick={() => {
+                  setEditingId(court.id);
+                  setEditingName(court.name);
+                }}
+              >
+                <TennisBall />
+                <strong>{court.name}</strong>
+                <PencilSimple />
+              </button>
+              <UiSwitch
+                aria-label={`${court.name} aktiv`}
+                checked={!!court.active}
+                onCheckedChange={(active) =>
+                  mutate(`/admin/courts/${court.id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ active }),
+                  }).catch(() => {})
+                }
+              />
+              <UiAlertDialog>
+                <UiAlertDialogTrigger asChild>
+                  <UiButton
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`${court.name} löschen`}
+                  >
+                    <Trash />
+                  </UiButton>
+                </UiAlertDialogTrigger>
+                <UiAlertDialogContent>
+                  <UiAlertDialogHeader>
+                    <UiAlertDialogMedia>
+                      <Trash />
+                    </UiAlertDialogMedia>
+                    <UiAlertDialogTitle>
+                      {court.name} dauerhaft löschen?
+                    </UiAlertDialogTitle>
+                    <UiAlertDialogDescription>
+                      Frühere Runden behalten diesen Platznamen. Für kommende
+                      Auslosungen steht der Platz nicht mehr zur Verfügung.
+                    </UiAlertDialogDescription>
+                  </UiAlertDialogHeader>
+                  <UiAlertDialogFooter>
+                    <UiAlertDialogCancel>Abbrechen</UiAlertDialogCancel>
+                    <UiAlertDialogAction
+                      variant="destructive"
+                      onClick={() =>
+                        mutate(
+                          `/admin/courts/${court.id}`,
+                          { method: "DELETE" },
+                          "Platz gelöscht.",
+                        )
+                      }
+                    >
+                      Löschen
+                    </UiAlertDialogAction>
+                  </UiAlertDialogFooter>
+                </UiAlertDialogContent>
+              </UiAlertDialog>
+            </div>
+          ))}
+          {courts.length === 0 && (
+            <p className="court-empty">
+              Noch keine Plätze. Lege den ersten Spielort oben an.
+            </p>
+          )}
+        </div>
+      </UiCardContent>
+      <UiDialog
+        open={Boolean(editingCourt)}
+        onOpenChange={(open) => {
+          if (!open) setEditingId("");
+        }}
+      >
+        <UiDialogContent className="sm:max-w-md">
+          <UiDialogHeader>
+            <UiDialogTitle>Platz umbenennen</UiDialogTitle>
+          </UiDialogHeader>
+          {editingCourt && (
+            <form
+              className="court-edit-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void mutate(
+                  `/admin/courts/${editingCourt.id}`,
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify({ name: editingName }),
+                  },
+                  "Platz umbenannt.",
+                ).then(() => setEditingId(""));
+              }}
+            >
+              <UiField>
+                <UiFieldLabel htmlFor="court-edit-name">Platzname</UiFieldLabel>
+                <UiInput
+                  id="court-edit-name"
+                  value={editingName}
+                  maxLength={40}
+                  onChange={(event) => setEditingName(event.target.value)}
+                  autoFocus
+                  required
+                />
+              </UiField>
+              <UiDialogFooter>
+                <UiDialogClose asChild>
+                  <UiButton type="button" variant="outline">
+                    Abbrechen
+                  </UiButton>
+                </UiDialogClose>
+                <UiButton type="submit">Speichern</UiButton>
+              </UiDialogFooter>
+            </form>
+          )}
+        </UiDialogContent>
+      </UiDialog>
+    </UiCard>
+  );
+}
+
 function EventAdmin() {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState(""),
     [note, setNote] = useState("");
-  const [duration, setDuration] = useState(20),
-    [courts, setCourts] = useState(4);
+  const [duration, setDuration] = useState(20);
   const [correctionPlayerId, setCorrectionPlayerId] = useState("");
   const load = () =>
     api<EventData>(`/admin/events/${id}`)
       .then((x) => {
         setData(x);
         setDuration(x.event.default_round_duration_seconds / 60);
-        setCourts(x.event.default_court_count);
       })
       .catch((x) => setError(x.message));
   useEffect(() => {
@@ -1234,20 +1430,21 @@ function EventAdmin() {
         .filter((player): player is Player => Boolean(player)) ?? [],
     participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
+    activeCourts = data.courts.filter((court) => court.active).length,
     perfectActiveCount = activePlayers >= 4 && activePlayers % 4 === 0,
     nextSitOutCount = activePlayers >= 4 ? activePlayers % 4 : 0,
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     visibleLobbySlots = Math.max(
       8,
-      Math.min(16, Math.max(courts * 4, data.players.length + 4)),
+      Math.min(16, Math.max(activeCourts * 4, data.players.length + 4)),
     );
   const generate = () =>
     mutate(
       `/admin/events/${id}/generate`,
       {
         method: "POST",
-        body: JSON.stringify({ durationMinutes: duration, courtCount: courts }),
+        body: JSON.stringify({ durationMinutes: duration }),
       },
       "Doppel ausgelost und veröffentlicht.",
     );
@@ -1278,7 +1475,8 @@ function EventAdmin() {
             <UiCardDescription>
               {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
               {" · "}
-              {participantCount} Teilnehmer · {courts} Plätze · {duration}{" "}
+              {participantCount} Teilnehmer · {activeCourts} aktive Plätze ·{" "}
+              {duration}{" "}
               Minuten
             </UiCardDescription>
             <UiCardAction>
@@ -1380,26 +1578,6 @@ function EventAdmin() {
                       </UiButton>
                     </div>
                   </UiField>
-                  <UiField orientation="horizontal">
-                    <UiFieldTitle>Plätze</UiFieldTitle>
-                    <UiSelect
-                      value={String(courts)}
-                      onValueChange={(v) => setCourts(+v)}
-                    >
-                      <UiSelectTrigger aria-label="Anzahl Plätze">
-                        <UiSelectValue />
-                      </UiSelectTrigger>
-                      <UiSelectContent>
-                        <UiSelectGroup>
-                          {Array.from({ length: 13 }, (_, i) => (
-                            <UiSelectItem key={i} value={String(i + 1)}>
-                              {i + 1}
-                            </UiSelectItem>
-                          ))}
-                        </UiSelectGroup>
-                      </UiSelectContent>
-                    </UiSelect>
-                  </UiField>
                 </UiFieldGroup>
               )}
               {round?.state === "published" && (
@@ -1484,7 +1662,7 @@ function EventAdmin() {
                 <UiButton
                   className="draw-action"
                   size="lg"
-                  disabled={activePlayers < 4}
+                  disabled={activePlayers < 4 || activeCourts === 0}
                   onClick={generate}
                 >
                   <span className="draw-action-icon" aria-hidden="true">
@@ -1517,6 +1695,7 @@ function EventAdmin() {
             </UiCardFooter>
           </UiCard>
           <aside className="control-rail">
+            <CourtManager eventId={id} courts={data.courts} mutate={mutate} />
             <UiCard className="control-participants">
               <UiCardHeader>
                 <UiCardTitle>Teilnehmer</UiCardTitle>
@@ -1868,13 +2047,13 @@ function PublicEvent() {
         <header className="public-court-header">
           <div>
             <span>Du spielst auf</span>
-            <strong>Platz {match.court_number}</strong>
+            <strong>{courtName(match)}</strong>
           </div>
           <TennisBall aria-hidden="true" />
         </header>
         <div
           className="public-court-board"
-          aria-label={`Platz ${match.court_number}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
+          aria-label={`${courtName(match)}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
         >
           <div className="public-court-lines" aria-hidden="true">
             <span className="court-line court-line-service-top" />

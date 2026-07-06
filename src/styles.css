@@ -2534,6 +2534,7 @@ label {
 }
 
 .control-stage,
+.control-courts,
 .control-participants,
 .control-leaderboard {
   min-width: 0;
@@ -2545,6 +2546,7 @@ label {
 }
 
 .control-stage [data-slot="card-title"],
+.control-courts [data-slot="card-title"],
 .control-participants [data-slot="card-title"],
 .control-leaderboard [data-slot="card-title"] {
   font-size: 1.15rem;
@@ -2580,7 +2582,7 @@ label {
 
 .control-settings {
   display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) minmax(140px, 0.65fr);
+  grid-template-columns: minmax(240px, 1fr);
   gap: var(--space-3);
 }
 
@@ -2706,6 +2708,105 @@ label {
 
 .control-rail {
   min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.control-courts [data-slot="card-content"] {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.court-balance {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  padding: var(--space-2) var(--space-3);
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.court-balance.ready {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.court-balance svg {
+  flex: 0 0 auto;
+}
+
+.court-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.court-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  padding-block: var(--space-1);
+}
+
+.court-row:last-child {
+  border-bottom: 0;
+}
+
+.court-row.off {
+  color: var(--muted-foreground);
+}
+
+.court-open {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: transparent;
+  padding: var(--space-2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.court-open strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.court-open > svg:last-child {
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.court-open:hover > svg:last-child,
+.court-open:focus-visible > svg:last-child {
+  opacity: 1;
+}
+
+.court-open:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.court-empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.court-edit-form {
   display: grid;
   gap: var(--space-4);
 }
