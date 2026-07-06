@@ -905,6 +905,55 @@ label {
   background: oklch(100% 0 0);
   padding: var(--space-3);
   box-shadow: 0 4px 8px oklch(28% 0.08 250 / 0.1);
+  transition:
+    background-color 180ms ease-out,
+    border-color 180ms ease-out;
+}
+
+.match.is-saved {
+  border-color: oklch(69% 0.11 150);
+  background: oklch(98% 0.024 150);
+}
+
+.match.is-saved .match-board {
+  border-color: oklch(78% 0.085 150);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 49.6%,
+      oklch(70% 0.08 150 / 0.18) 49.6% 50.4%,
+      transparent 50.4%
+    ),
+    linear-gradient(
+      0deg,
+      transparent 49.4%,
+      oklch(70% 0.08 150 / 0.16) 49.4% 50.6%,
+      transparent 50.6%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 16.5%,
+      oklch(70% 0.08 150 / 0.1) 16.5% 16.95%,
+      transparent 16.95% 83.05%,
+      oklch(70% 0.08 150 / 0.1) 83.05% 83.5%,
+      transparent 83.5%
+    ),
+    oklch(98% 0.018 150);
+}
+
+.match.is-saved .court-label [data-slot="badge"] {
+  border-color: oklch(68% 0.11 150);
+  background: oklch(93% 0.05 150);
+  color: oklch(34% 0.09 150);
+}
+
+.match.is-saving {
+  background: oklch(99% 0.009 250);
+}
+
+.match.is-save-failed {
+  border-color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .court-label {
@@ -1060,7 +1109,7 @@ label {
 
 .match footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
   align-items: start;
   border-top: 1px solid var(--line);
@@ -1071,16 +1120,18 @@ label {
 .score-entry {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .score-picker {
   display: grid;
-  grid-template-columns: repeat(4, minmax(36px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-1);
 }
 
 .score-number {
-  min-width: 36px;
+  min-width: 0;
+  width: 100%;
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -1119,42 +1170,8 @@ label {
   font-weight: 750;
 }
 
-.score-save-indicator {
-  display: grid;
-  width: 40px;
-  min-height: 34px;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-}
-
-.score-save-indicator svg {
-  width: 18px;
-  height: 18px;
-}
-
-.score-save-indicator.saved {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: white;
-}
-
-.score-save-indicator.saving {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  color: var(--primary-strong);
-}
-
-.score-save-indicator.failed {
-  border-color: var(--danger);
-  background: color-mix(in oklch, var(--danger) 10%, white);
-  color: var(--danger);
-}
-
 .save-state.saved {
-  color: var(--primary-strong);
+  color: oklch(34% 0.09 150);
 }
 
 .save-state.failed {
