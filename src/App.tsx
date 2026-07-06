@@ -651,7 +651,14 @@ function MatchCard({
     </span>
   );
   return (
-    <article className="match court-card">
+    <article
+      className={cn(
+        "match court-card",
+        saved && "is-saved",
+        saving && "is-saving",
+        failed && "is-save-failed",
+      )}
+    >
       <header className="court-label">
         <b>{courtName(m)}</b>
         {m.result_type === "played" && (
@@ -685,34 +692,6 @@ function MatchCard({
           <ScorePicker label="Team links" value={a} onChange={setA} />
           <b className="score-divider">:</b>
           <ScorePicker label="Team rechts" value={b} onChange={setB} />
-          <span
-            className={cn(
-              "score-save-indicator",
-              saved && "saved",
-              saving && "saving",
-              failed && "failed",
-            )}
-            aria-label={
-              saved
-                ? "Ergebnis gespeichert"
-                : failed
-                  ? "Speichern fehlgeschlagen"
-                  : saving
-                    ? "Ergebnis wird gespeichert"
-                    : "Automatisches Speichern"
-            }
-            title={
-              saved
-                ? "Gespeichert"
-                : failed
-                  ? "Speichern fehlgeschlagen"
-                  : saving
-                    ? "Speichert…"
-                    : "Speichert automatisch"
-            }
-          >
-            <Check aria-hidden="true" weight="bold" />
-          </span>
           <small
             className={
               saved
