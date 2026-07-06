@@ -668,7 +668,7 @@ function MatchCard({
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
-      <span className="player-name">{players.get(id)?.display_name}</span>
+      {players.get(id)?.display_name}
     </span>
   );
   return (
