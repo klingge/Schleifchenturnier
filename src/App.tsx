@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   NavLink,
   Navigate,
@@ -89,8 +96,9 @@ import { Switch as UiSwitch } from "@/components/ui/switch";
 import { TooltipProvider as UiTooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
-  canCompleteRound,
+  canCompleteRoundWithEntries,
   countCompletedResults,
+  type MatchEntryStatus,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
 
@@ -588,11 +596,13 @@ function MatchCard({
   players,
   result,
   save,
+  onStatusChange,
 }: {
   m: Match;
   players: Map<string, Player>;
   result: boolean;
   save: (a: number, b: number) => Promise<void>;
+  onStatusChange?: (matchId: string, status: MatchEntryStatus) => void;
 }) {
   const initialSaved =
     m.result_type === "played" &&
@@ -609,6 +619,7 @@ function MatchCard({
   const canSave = a !== null && b !== null && a !== b;
   const saved = canSave && currentKey === lastSaved;
   const failed = currentKey !== "" && currentKey === failedKey;
+  const complete = saved && !saving && !failed;
   useEffect(() => {
     setA(m.team_a_games);
     setB(m.team_b_games);
@@ -644,6 +655,16 @@ function MatchCard({
       .catch(() => setFailedKey(currentKey))
       .finally(() => setSaving(false));
   }, [a, b, currentKey, failedKey, lastSaved, result, save, saving]);
+  useEffect(() => {
+    if (!result) return;
+    onStatusChange?.(m.id, {
+      complete,
+      valid: canSave,
+      saved,
+      saving,
+      failed,
+    });
+  }, [canSave, complete, failed, m.id, onStatusChange, result, saved, saving]);
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
@@ -731,7 +752,15 @@ function ScorePicker({
     if ((value ?? 0) > 6) setCustomOpen(true);
   }, [value]);
   return (
-    <div className="score-entry" aria-label={label}>
+    <div
+      className={cn(
+        "score-entry",
+        label.includes("links") && "is-left",
+        label.includes("rechts") && "is-right",
+      )}
+      aria-label={label}
+    >
+      <span className="score-entry-label">{label}</span>
       <div className="score-picker">
         {scoreValues.map((score) => (
           <button
@@ -1343,6 +1372,9 @@ function EventAdmin() {
     [note, setNote] = useState("");
   const [duration, setDuration] = useState(20);
   const [correctionPlayerId, setCorrectionPlayerId] = useState("");
+  const [matchEntryStatuses, setMatchEntryStatuses] = useState<
+    Record<string, MatchEntryStatus>
+  >({});
   const configurationLocked = Boolean(
     data?.currentRound && data.currentRound.state !== "completed",
   );
@@ -1362,6 +1394,28 @@ function EventAdmin() {
       return;
     }
   }, [id, nav, requestedTab]);
+  useEffect(() => {
+    setMatchEntryStatuses({});
+  }, [data?.currentRound?.id, data?.currentRound?.state]);
+  const updateMatchEntryStatus = useCallback(
+    (matchId: string, status: MatchEntryStatus) => {
+      setMatchEntryStatuses((current) => {
+        const existing = current[matchId];
+        if (
+          existing &&
+          existing.complete === status.complete &&
+          existing.valid === status.valid &&
+          existing.saved === status.saved &&
+          existing.saving === status.saving &&
+          existing.failed === status.failed
+        ) {
+          return current;
+        }
+        return { ...current, [matchId]: status };
+      });
+    },
+    [],
+  );
   async function mutate(path: string, init: RequestInit, message?: string) {
     setError("");
     setNote("");
@@ -1435,7 +1489,11 @@ function EventAdmin() {
       Math.min(16, Math.max(activeCourts * 4, data.players.length + 4)),
     ),
     completedResults = countCompletedResults(round?.matches ?? []),
-    roundCanComplete = canCompleteRound(round?.state, round?.matches ?? []);
+    roundCanComplete = canCompleteRoundWithEntries(
+      round?.state,
+      round?.matches ?? [],
+      matchEntryStatuses,
+    );
   const generate = () =>
     mutate(
       `/admin/events/${id}/generate`,
@@ -1685,6 +1743,7 @@ function EventAdmin() {
                           m={m}
                           players={pm}
                           result={round.state === "results"}
+                          onStatusChange={updateMatchEntryStatus}
                           save={(a, b) =>
                             mutate(`/admin/matches/${m.id}/result`, {
                               method: "PUT",

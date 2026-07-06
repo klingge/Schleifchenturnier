@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canCompleteRound,
+  canCompleteRoundWithEntries,
   countCompletedResults,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
@@ -33,6 +34,70 @@ describe("admin dashboard result state", () => {
       false,
     );
     expect(canCompleteRound("results", [])).toBe(false);
+  });
+
+  it("disables round completion when a local entry is invalid or saving", () => {
+    const matches = [
+      { id: "match-1", result_type: "played" },
+      { id: "match-2", result_type: "played" },
+    ];
+
+    expect(
+      canCompleteRoundWithEntries("results", matches, {
+        "match-1": {
+          complete: true,
+          valid: true,
+          saved: true,
+          saving: false,
+          failed: false,
+        },
+        "match-2": {
+          complete: true,
+          valid: true,
+          saved: true,
+          saving: false,
+          failed: false,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      canCompleteRoundWithEntries("results", matches, {
+        "match-1": {
+          complete: false,
+          valid: false,
+          saved: false,
+          saving: false,
+          failed: false,
+        },
+        "match-2": {
+          complete: true,
+          valid: true,
+          saved: true,
+          saving: false,
+          failed: false,
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      canCompleteRoundWithEntries("results", matches, {
+        "match-1": {
+          complete: false,
+          valid: true,
+          saved: false,
+          saving: true,
+          failed: false,
+        },
+        "match-2": {
+          complete: true,
+          valid: true,
+          saved: true,
+          saving: false,
+          failed: false,
+        },
+      }),
+    ).toBe(false);
   });
 
   it("auto-saves only valid changed non-draw scores", () => {
