@@ -1021,12 +1021,34 @@ label {
   min-width: 0;
   display: grid;
   align-items: center;
+  min-height: 100%;
+  border: 1px solid color-mix(in oklch, var(--line) 82%, white);
+  border-radius: var(--radius-sm);
+  background: oklch(100% 0 0 / 0.52);
+  padding: var(--space-2);
+}
+
+.score-team:first-child {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--primary-soft) 34%, white),
+    oklch(100% 0 0 / 0.58)
+  );
+}
+
+.score-team:last-child {
+  background: linear-gradient(
+    270deg,
+    color-mix(in oklch, var(--primary-soft) 34%, white),
+    oklch(100% 0 0 / 0.58)
+  );
 }
 
 .team-players {
   display: grid;
   gap: var(--space-2);
-  align-content: center;
+  height: 100%;
+  align-content: space-between;
 }
 
 .score-versus {
@@ -1100,11 +1122,19 @@ label {
   background: oklch(100% 0 0);
   color: var(--ink);
   font-weight: 750;
+  box-shadow: 0 1px 2px oklch(28% 0.08 250 / 0.05);
 }
 
 .player-pill i {
   flex: 0 0 auto;
   font-style: normal;
+}
+
+.player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .match footer {
@@ -3258,14 +3288,13 @@ label {
 
 .dashboard-matches .match-board {
   min-height: 284px;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--space-2);
   padding: var(--space-3);
 }
 
 .dashboard-matches .team-players {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .dashboard-matches .score-versus {
@@ -3273,7 +3302,7 @@ label {
 }
 
 .dashboard-matches .score-versus strong {
-  min-width: 88px;
+  min-width: 66px;
   font-size: 1.45rem;
 }
 
@@ -3309,6 +3338,24 @@ label {
 
   .dashboard-matches .match-board {
     min-height: 250px;
+  }
+
+  .dashboard-matches .score-versus {
+    min-width: 52px;
+  }
+
+  .dashboard-matches .score-versus strong {
+    min-width: 52px;
+    font-size: 1.28rem;
+  }
+
+  .dashboard-matches .score-team {
+    padding: var(--space-1);
+  }
+
+  .dashboard-matches .player-pill {
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
   }
 }
 
