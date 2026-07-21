@@ -1033,12 +1033,7 @@ label {
   animation: public-refresh-spin 650ms linear infinite;
 }
 
-.match-board {
-  position: relative;
-  min-height: 220px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+.court-board-surface {
   background:
     linear-gradient(
       90deg,
@@ -1062,6 +1057,14 @@ label {
     ),
     linear-gradient(90deg, oklch(97% 0.015 105), var(--surface-raised)),
     var(--surface);
+}
+
+.match-board {
+  position: relative;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--space-3);
@@ -2830,119 +2833,114 @@ label {
   gap: var(--space-3);
 }
 
+.court-add-trigger {
+  min-height: 48px;
+  padding-inline: var(--space-4);
+  font-weight: 800;
+}
+
+.court-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.court-add-form [data-slot="field"] {
+  min-width: 0;
+}
+
+.court-add-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .court-balance {
+  min-height: 42px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 44px;
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--muted);
+  background: var(--surface);
   padding: var(--space-2) var(--space-3);
-  color: var(--muted-foreground);
+  color: var(--muted);
   font-size: 0.85rem;
-  font-weight: 650;
+  font-weight: 750;
 }
 
 .court-balance.ready {
+  border-color: var(--line-strong);
   background: var(--primary-soft);
   color: var(--primary-strong);
 }
 
 .court-balance svg {
   flex: 0 0 auto;
+  color: var(--primary);
 }
 
 .court-visual-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
 .court-visual-card {
+  min-width: 0;
+  min-height: 80px;
   display: grid;
-  gap: var(--space-2);
-  border: 1px solid var(--border);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--background);
-  padding: var(--space-2);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-3);
 }
 
 .court-visual-card.off {
-  color: var(--muted-foreground);
-  background: var(--muted);
+  background: var(--surface);
+}
+
+.court-visual-card.off .court-open {
+  opacity: 0.62;
 }
 
 .court-open {
   min-width: 0;
-  display: flex;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   border: 0;
   background: transparent;
-  padding: var(--space-2);
+  padding: 0;
   color: inherit;
   text-align: left;
+}
+
+button.court-open {
   cursor: pointer;
 }
 
-.court-surface {
-  position: relative;
-  display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) auto;
-  min-height: 96px;
-  width: 100%;
-  align-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+button.court-open:hover strong,
+button.court-open:focus-visible strong {
+  color: var(--primary-strong);
 }
 
-button.court-surface:hover {
-  background: var(--primary-soft);
-}
-
-.court-diagram {
-  position: relative;
+.court-board-preview {
   display: block;
-  width: 70px;
-  height: 48px;
-  border: 2px solid var(--primary);
-  border-radius: 3px;
-  background: color-mix(
-    in oklch,
-    var(--primary-soft) 82%,
-    var(--surface-raised)
-  );
-}
-
-.court-singles-lines {
-  position: absolute;
-  inset: 7px 0;
-  border-block: 1.5px solid var(--primary);
-}
-
-.court-service-lines {
-  position: absolute;
-  inset: 7px 24%;
-  border-inline: 1.5px solid var(--primary);
-}
-
-.court-service-lines::after {
-  position: absolute;
-  top: calc(50% - 0.75px);
-  right: 0;
-  left: 0;
-  height: 1.5px;
-  background: var(--primary);
-  content: "";
-}
-
-.court-net {
-  position: absolute;
-  inset-block: -5px;
-  left: calc(50% - 1px);
-  width: 2px;
-  border-radius: 999px;
-  background: var(--primary);
+  width: 96px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .court-card-label {
@@ -2951,29 +2949,18 @@ button.court-surface:hover {
   gap: 2px;
 }
 
-.court-open strong {
+.court-card-label strong {
   min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.court-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding-inline: var(--space-2);
-}
-
-.court-card-status {
-  color: var(--primary-strong);
-  font-size: 0.82rem;
-  font-weight: 750;
-}
-
-.court-visual-card.off .court-card-status {
-  color: var(--muted-foreground);
+.court-card-label small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 .court-open > svg:last-child {
@@ -2986,6 +2973,34 @@ button.court-surface:hover {
   opacity: 1;
 }
 
+.court-status-button,
+.court-read-status {
+  min-width: 104px;
+  min-height: 44px;
+  justify-self: end;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.court-status-button.is-active,
+.court-read-status.is-active {
+  border-color: var(--line-strong);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.court-read-status {
+  padding-inline: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .court-open:focus-visible {
   border-radius: var(--radius-sm);
   outline: 2px solid var(--ring);
@@ -2993,9 +3008,11 @@ button.court-surface:hover {
 }
 
 .court-empty {
+  grid-column: 1 / -1;
   margin: 0;
-  padding: var(--space-3);
-  color: var(--muted-foreground);
+  padding: var(--space-5) var(--space-3);
+  color: var(--muted);
+  font-weight: 650;
   text-align: center;
 }
 
@@ -4124,7 +4141,7 @@ main:has(.login) {
 }
 
 .court-open {
-  background-color: var(--surface-blue-strong);
+  background-color: transparent;
   color: var(--ink);
 }
 
@@ -4152,40 +4169,18 @@ main:has(.login) {
 }
 
 .court-visual-grid {
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .court-visual-card {
-  overflow: clip;
   border-color: var(--line);
-  border-radius: 14px;
   background: var(--surface-raised);
-  transition:
-    transform var(--motion-state) var(--ease-out-expo),
-    border-color var(--motion-control) var(--ease-out-expo);
-}
-
-.court-visual-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
+  transition: border-color var(--motion-control) var(--ease-out-expo);
 }
 
 .court-visual-card.off {
-  opacity: 0.64;
-}
-
-.court-singles-lines,
-.court-service-lines,
-.court-net,
-.court-diagram::before,
-.court-diagram::after {
-  border-color: var(--primary-strong);
-  background-color: var(--primary-strong);
-}
-
-.court-card-actions {
-  border-top-color: var(--line);
-  background: var(--surface-raised);
+  opacity: 1;
+  background: var(--surface);
 }
 
 .court-balance.ready {
@@ -4512,6 +4507,10 @@ body:has(.public-screen) main {
     width: min(100% - 32px, 1420px);
   }
 
+  .court-visual-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .initial-setup-guide {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-3);
@@ -4649,7 +4648,12 @@ body:has(.public-screen) main {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .control-participants [data-slot="card-action"] {
+  .court-add-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .control-participants [data-slot="card-action"],
+  .control-courts [data-slot="card-action"] {
     grid-column: 1 / -1;
     grid-row: auto;
     width: 100%;
@@ -4657,12 +4661,33 @@ body:has(.public-screen) main {
     justify-self: stretch;
   }
 
-  .participant-add-trigger {
+  .participant-add-trigger,
+  .court-add-trigger {
     width: 100%;
   }
 
-  .participant-add-actions > button {
+  .participant-add-actions > button,
+  .court-add-actions > button {
     flex: 1;
+  }
+
+  .court-open {
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+
+  .court-board-preview {
+    width: 72px;
+    height: 48px;
+  }
+
+  .court-status-button,
+  .court-read-status {
+    min-width: 84px;
+  }
+
+  .court-card-label small {
+    display: none;
   }
 
   .control-players .player-row {
