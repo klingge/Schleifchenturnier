@@ -11,6 +11,33 @@ export type MatchEntryStatus = {
   failed: boolean;
 };
 
+export type TimerRoundState = {
+  state: string;
+  duration_seconds: number;
+  expires_at: string | null;
+  paused_at?: string | null;
+};
+
+const resultEntryRoundStates = new Set(["running", "paused", "results"]);
+
+export function isResultEntryRoundState(
+  roundState: string | null | undefined,
+) {
+  return resultEntryRoundStates.has(roundState ?? "");
+}
+
+export function getRoundSecondsLeft(round: TimerRoundState, now = Date.now()) {
+  if (!round.expires_at) return round.duration_seconds;
+  const referenceTime =
+    round.state === "paused" && round.paused_at
+      ? Date.parse(round.paused_at)
+      : now;
+  return Math.max(
+    0,
+    Math.ceil((Date.parse(round.expires_at) - referenceTime) / 1000),
+  );
+}
+
 export function countCompletedResults(matches: ResultMatchState[]) {
   return matches.filter((match) => match.result_type === "played").length;
 }
@@ -20,7 +47,7 @@ export function canCompleteRound(
   matches: ResultMatchState[],
 ) {
   return (
-    roundState === "results" &&
+    isResultEntryRoundState(roundState) &&
     matches.length > 0 &&
     matches.every((match) => match.result_type === "played")
   );

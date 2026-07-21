@@ -50,9 +50,28 @@ const eventInput = z.object({
 });
 const playerInput = z.object({ name: z.string().trim().min(1).max(40) });
 const courtInput = z.object({ name: z.string().trim().min(1).max(40) });
+const durationMinutes = z.coerce.number().int().min(1).max(240);
 const generateInput = z.object({
-  durationMinutes: z.coerce.number().int().min(1).max(240),
+  durationMinutes: durationMinutes.optional(),
 });
+const eventUpdateInput = z
+  .object({
+    status: z.enum(["active", "archived"]).optional(),
+    durationMinutes: durationMinutes.optional(),
+  })
+  .refine(
+    (value) =>
+      value.status !== undefined || value.durationMinutes !== undefined,
+  );
+
+export function resolveRoundDurationSeconds(
+  requestedMinutes: number | undefined,
+  defaultDurationSeconds: number,
+) {
+  return requestedMinutes === undefined
+    ? defaultDurationSeconds
+    : requestedMinutes * 60;
+}
 
 function base64Url(bytes: ArrayBuffer | Uint8Array) {
   const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -282,8 +301,7 @@ async function assembleEvent(db: D1Database, event: DbRow) {
         String(a.display_name).localeCompare(String(b.display_name), "de"),
     );
   let previous:
-    | { wins: number; gameDifference: number; rank: number }
-    | undefined;
+    { wins: number; gameDifference: number; rank: number } | undefined;
   leaderboard.forEach((player, index) => {
     const rank =
       previous &&
@@ -415,19 +433,24 @@ admin.get("/events/:id", async (c) => {
 });
 
 admin.patch("/events/:id", async (c) => {
-  const body = z
-    .object({ status: z.enum(["active", "archived"]) })
-    .safeParse(await c.req.json().catch(() => ({})));
-  if (!body.success) return c.json({ error: "Ungültiger Status." }, 400);
+  const body = eventUpdateInput.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success)
+    return c.json({ error: "Ungültige Veranstaltungseinstellungen." }, 400);
+  const status = body.data.status ?? null;
+  const archivedAt = status === "archived" ? now() : null;
+  const durationSeconds =
+    body.data.durationMinutes === undefined
+      ? null
+      : body.data.durationMinutes * 60;
   await c.env.DB.prepare(
-    "UPDATE events SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?",
+    `UPDATE events
+     SET status = COALESCE(?, status),
+         archived_at = CASE WHEN ? IS NULL THEN archived_at ELSE ? END,
+         default_round_duration_seconds = COALESCE(?, default_round_duration_seconds),
+         updated_at = ?
+     WHERE id = ?`,
   )
-    .bind(
-      body.data.status,
-      body.data.status === "archived" ? now() : null,
-      now(),
-      c.req.param("id"),
-    )
+    .bind(status, status, archivedAt, durationSeconds, now(), c.req.param("id"))
     .run();
   return c.json({ ok: true });
 });
@@ -644,6 +667,10 @@ admin.post("/events/:id/generate", async (c) => {
   const eventId = c.req.param("id");
   const data = await loadEvent(c.env.DB, eventId);
   if (!data) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  const roundDurationSeconds = resolveRoundDurationSeconds(
+    input.data.durationMinutes,
+    Number(data.event.default_round_duration_seconds),
+  );
   const current = data.currentRound;
   if (current && !["completed", "published"].includes(String(current.state)))
     return c.json(
@@ -706,7 +733,7 @@ admin.post("/events/:id/generate", async (c) => {
       eventId,
       roundNumber,
       activeCourts.length,
-      input.data.durationMinutes * 60,
+      roundDurationSeconds,
       timestamp,
       seed,
     ),
@@ -827,7 +854,7 @@ admin.put("/matches/:id/result", async (c) => {
     .bind(c.req.param("id"))
     .first<{ state: string }>();
   if (!match) return c.json({ error: "Match nicht gefunden." }, 404);
-  if (!["results", "completed"].includes(match.state))
+  if (!["running", "paused", "results", "completed"].includes(match.state))
     return c.json(
       {
         error:
@@ -847,15 +874,28 @@ admin.post("/rounds/:id/complete", async (c) => {
   const input = z
     .object({ allowMissing: z.boolean().default(false) })
     .safeParse(await c.req.json().catch(() => ({})));
+  if (!input.success)
+    return c.json({ error: "Ung\u00fcltige Abschlussanfrage." }, 400);
+
+  const roundId = c.req.param("id");
+  const round = await c.env.DB.prepare(
+    "SELECT state FROM rounds WHERE id = ?",
+  )
+    .bind(roundId)
+    .first<{ state: string }>();
+  if (!round) return c.json({ error: "Runde nicht gefunden." }, 404);
+  if (!["running", "paused", "results"].includes(round.state))
+    return c.json(
+      { error: "Diese Runde kann im aktuellen Status nicht abgeschlossen werden." },
+      409,
+    );
+
   const pending = await c.env.DB.prepare(
     "SELECT COUNT(*) AS count FROM matches WHERE round_id = ? AND result_type = 'pending'",
   )
-    .bind(c.req.param("id"))
+    .bind(roundId)
     .first<{ count: number }>();
-  if (
-    Number(pending?.count) > 0 &&
-    (!input.success || !input.data.allowMissing)
-  )
+  if (Number(pending?.count) > 0)
     return c.json(
       { error: "missing_results", count: Number(pending?.count) },
       409,
@@ -864,10 +904,10 @@ admin.post("/rounds/:id/complete", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       "UPDATE matches SET team_a_games = 0, team_b_games = 0, result_type = 'missing' WHERE round_id = ? AND result_type = 'pending'",
-    ).bind(c.req.param("id")),
+    ).bind(roundId),
     c.env.DB.prepare(
-      "UPDATE rounds SET state = 'completed', completed_at = ? WHERE id = ? AND state = 'results'",
-    ).bind(timestamp, c.req.param("id")),
+      "UPDATE rounds SET state = 'completed', completed_at = ? WHERE id = ? AND state IN ('running', 'paused', 'results')",
+    ).bind(timestamp, roundId),
   ]);
   return c.json({ ok: true });
 });
