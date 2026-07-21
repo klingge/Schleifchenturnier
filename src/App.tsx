@@ -98,16 +98,9 @@ import {
   DropdownMenuSeparator as UiDropdownMenuSeparator,
   DropdownMenuTrigger as UiDropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  InputGroup as UiInputGroup,
-  InputGroupAddon as UiInputGroupAddon,
-  InputGroupButton as UiInputGroupButton,
-  InputGroupInput as UiInputGroupInput,
-} from "@/components/ui/input-group";
 import { ScrollArea as UiScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
 import { Progress as UiProgress } from "@/components/ui/progress";
-import { Switch as UiSwitch } from "@/components/ui/switch";
 import { TooltipProvider as UiTooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
@@ -819,7 +812,7 @@ function MatchCard({
           </span>
         )}
       </header>
-      <div className="match-board">
+      <div className="match-board court-board-surface">
         <div className="score-team">
           <div className="team-players">
             {n(m.team_a_player_1_id)}
@@ -1465,6 +1458,8 @@ function CourtManager({
   setupReady?: boolean;
   onSetupContinue?: () => void;
 }) {
+  const [courtAddOpen, setCourtAddOpen] = useState(false);
+  const [courtAdding, setCourtAdding] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editingName, setEditingName] = useState("");
   const editingCourt = courts.find((court) => court.id === editingId);
@@ -1473,11 +1468,17 @@ function CourtManager({
   async function addCourt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    await mutate(`/admin/events/${eventId}/courts`, {
-      method: "POST",
-      body: JSON.stringify({ name: new FormData(form).get("name") }),
-    });
-    form.reset();
+    setCourtAdding(true);
+    try {
+      await mutate(`/admin/events/${eventId}/courts`, {
+        method: "POST",
+        body: JSON.stringify({ name: new FormData(form).get("name") }),
+      });
+      form.reset();
+      setCourtAddOpen(false);
+    } finally {
+      setCourtAdding(false);
+    }
   }
 
   return (
@@ -1487,9 +1488,29 @@ function CourtManager({
         <UiCardDescription>
           {activeCount} aktiv von {courts.length}
         </UiCardDescription>
-        <UiCardAction>
-          <TennisBall />
-        </UiCardAction>
+        {editable && (
+          <UiCardAction>
+            <UiButton
+              className="court-add-trigger"
+              type="button"
+              variant={courtAddOpen ? "secondary" : "default"}
+              disabled={courts.length >= 13 && !courtAddOpen}
+              aria-expanded={courtAddOpen}
+              aria-controls="court-add-form"
+              onClick={() => setCourtAddOpen((open) => !open)}
+            >
+              {courtAddOpen ? (
+                <>
+                  <X data-icon="inline-start" /> Schließen
+                </>
+              ) : (
+                <>
+                  <Plus data-icon="inline-start" /> Hinzufügen
+                </>
+              )}
+            </UiButton>
+          </UiCardAction>
+        )}
       </UiCardHeader>
       <UiCardContent>
         {!editable && (
@@ -1502,35 +1523,46 @@ function CourtManager({
             </UiAlertDescription>
           </UiAlert>
         )}
-        {editable && (
-          <form onSubmit={addCourt}>
-            <UiFieldGroup>
-              <UiField>
-                <UiFieldLabel className="sr-only" htmlFor="court-name">
-                  Platzname
-                </UiFieldLabel>
-                <UiInputGroup>
-                  <UiInputGroupInput
-                    id="court-name"
-                    name="name"
-                    placeholder="z. B. Halle 1"
-                    maxLength={40}
-                    disabled={courts.length >= 13}
-                    required
-                  />
-                  <UiInputGroupAddon align="inline-end">
-                    <UiInputGroupButton
-                      type="submit"
-                      size="icon-xs"
-                      aria-label="Platz hinzufügen"
-                      disabled={courts.length >= 13}
-                    >
-                      <Plus />
-                    </UiInputGroupButton>
-                  </UiInputGroupAddon>
-                </UiInputGroup>
-              </UiField>
-            </UiFieldGroup>
+        {editable && courtAddOpen && (
+          <form
+            id="court-add-form"
+            className="court-add-form"
+            onSubmit={addCourt}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !courtAdding) {
+                event.preventDefault();
+                setCourtAddOpen(false);
+              }
+            }}
+          >
+            <UiField>
+              <UiFieldLabel className="sr-only" htmlFor="court-name">
+                Platzname
+              </UiFieldLabel>
+              <UiInput
+                id="court-name"
+                name="name"
+                placeholder="z. B. Halle 1"
+                maxLength={40}
+                disabled={courtAdding}
+                aria-busy={courtAdding}
+                autoFocus
+                required
+              />
+            </UiField>
+            <div className="court-add-actions">
+              <UiButton
+                type="button"
+                variant="outline"
+                disabled={courtAdding}
+                onClick={() => setCourtAddOpen(false)}
+              >
+                Abbrechen
+              </UiButton>
+              <UiButton type="submit" disabled={courtAdding}>
+                {courtAdding ? "Wird hinzugefügt…" : "Hinzufügen"}
+              </UiButton>
+            </div>
           </form>
         )}
         <div className={cn("court-balance", activeCount > 0 && "ready")}>
@@ -1550,57 +1582,73 @@ function CourtManager({
               {editable ? (
                 <button
                   type="button"
-                  className="court-open court-surface"
+                  className="court-open"
                   aria-label={`${court.name} umbenennen`}
                   onClick={() => {
                     setEditingId(court.id);
                     setEditingName(court.name);
                   }}
                 >
-                  <span className="court-diagram" aria-hidden="true">
-                    <span className="court-singles-lines" />
-                    <span className="court-service-lines" />
-                    <span className="court-net" />
-                  </span>
+                  <span
+                    className="court-board-preview court-board-surface"
+                    aria-hidden="true"
+                  />
                   <span className="court-card-label">
                     <strong>{court.name}</strong>
+                    <small>Umbenennen</small>
                   </span>
-                  <PencilSimple />
+                  <PencilSimple aria-hidden="true" />
                 </button>
               ) : (
-                <div className="court-open court-surface">
-                  <span className="court-diagram" aria-hidden="true">
-                    <span className="court-singles-lines" />
-                    <span className="court-service-lines" />
-                    <span className="court-net" />
-                  </span>
+                <div className="court-open">
+                  <span
+                    className="court-board-preview court-board-surface"
+                    aria-hidden="true"
+                  />
                   <span className="court-card-label">
                     <strong>{court.name}</strong>
                   </span>
                 </div>
               )}
-              <div className="court-card-actions">
-                <span className="court-card-status">
+              {editable ? (
+                <UiButton
+                  type="button"
+                  size="sm"
+                  variant={court.active ? "secondary" : "outline"}
+                  className={cn(
+                    "court-status-button",
+                    court.active && "is-active",
+                  )}
+                  aria-pressed={Boolean(court.active)}
+                  aria-label={`${court.name} ${
+                    court.active ? "deaktivieren" : "aktivieren"
+                  }`}
+                  onClick={() =>
+                    mutate(`/admin/courts/${court.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ active: !court.active }),
+                    }).catch(() => {})
+                  }
+                >
+                  {court.active && <Check aria-hidden="true" />}
+                  {court.active ? "Aktiv" : "Aus"}
+                </UiButton>
+              ) : (
+                <span
+                  className={cn(
+                    "court-read-status",
+                    court.active && "is-active",
+                  )}
+                >
+                  {court.active && <Check aria-hidden="true" />}
                   {court.active ? "Aktiv" : "Aus"}
                 </span>
-                {editable && (
-                  <UiSwitch
-                    aria-label={`${court.name} aktiv`}
-                    checked={!!court.active}
-                    onCheckedChange={(active) =>
-                      mutate(`/admin/courts/${court.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ active }),
-                      }).catch(() => {})
-                    }
-                  />
-                )}
-              </div>
+              )}
             </div>
           ))}
           {courts.length === 0 && (
             <p className="court-empty">
-              Noch keine Plätze. Lege den ersten Spielort oben an.
+              Noch keine Plätze. Füge den ersten Spielort hinzu.
             </p>
           )}
         </div>
