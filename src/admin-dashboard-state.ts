@@ -18,11 +18,30 @@ export type TimerRoundState = {
   paused_at?: string | null;
 };
 
+export type InitialSetupTab = "teilnehmer" | "plaetze" | "dashboard";
+
 const resultEntryRoundStates = new Set(["running", "paused", "results"]);
 
-export function isResultEntryRoundState(
-  roundState: string | null | undefined,
+export function getInitialSetupTab(
+  activePlayerCount: number,
+  activeCourtCount: number,
+): InitialSetupTab {
+  if (activePlayerCount < 4) return "teilnehmer";
+  if (activeCourtCount < 1) return "plaetze";
+  return "dashboard";
+}
+
+export function getSittingOutCount(
+  activePlayerCount: number,
+  activeCourtCount: number,
 ) {
+  const players = Math.max(0, Math.floor(activePlayerCount));
+  const courts = Math.max(0, Math.floor(activeCourtCount));
+  const playableCount = Math.min(courts * 4, Math.floor(players / 4) * 4);
+  return players - playableCount;
+}
+
+export function isResultEntryRoundState(roundState: string | null | undefined) {
   return resultEntryRoundStates.has(roundState ?? "");
 }
 

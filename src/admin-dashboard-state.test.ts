@@ -3,10 +3,34 @@ import {
   canCompleteRound,
   canCompleteRoundWithEntries,
   countCompletedResults,
+  getInitialSetupTab,
   getRoundSecondsLeft,
+  getSittingOutCount,
   isResultEntryRoundState,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
+
+describe("initial tournament setup", () => {
+  it("opens the earliest incomplete setup step", () => {
+    expect(getInitialSetupTab(0, 0)).toBe("teilnehmer");
+    expect(getInitialSetupTab(3, 2)).toBe("teilnehmer");
+    expect(getInitialSetupTab(4, 0)).toBe("plaetze");
+    expect(getInitialSetupTab(4, 1)).toBe("dashboard");
+  });
+
+  it("calculates sit-outs from players and active court capacity", () => {
+    expect(getSittingOutCount(17, 1)).toBe(13);
+    expect(getSittingOutCount(17, 4)).toBe(1);
+    expect(getSittingOutCount(8, 1)).toBe(4);
+    expect(getSittingOutCount(8, 2)).toBe(0);
+  });
+
+  it("handles missing prerequisites without producing invalid counts", () => {
+    expect(getSittingOutCount(3, 1)).toBe(3);
+    expect(getSittingOutCount(8, 0)).toBe(8);
+    expect(getSittingOutCount(-1, -1)).toBe(0);
+  });
+});
 
 describe("admin dashboard result state", () => {
   it("keeps an expired control timer at zero without changing state", () => {
