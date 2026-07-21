@@ -19,6 +19,7 @@ import {
 import {
   Archive,
   ArrowLeft,
+  ArrowRight,
   ArrowClockwise,
   CalendarBlank,
   Check,
@@ -112,7 +113,9 @@ import { cn } from "@/lib/utils";
 import {
   canCompleteRoundWithEntries,
   countCompletedResults,
+  getInitialSetupTab,
   getRoundSecondsLeft,
+  getSittingOutCount,
   isResultEntryRoundState,
   type MatchEntryStatus,
   shouldAutoSaveScore,
@@ -496,7 +499,9 @@ function Dashboard() {
               </label>
               <UiDialogFooter>
                 <UiDialogClose asChild>
-                  <UiButton type="button" variant="outline">Abbrechen</UiButton>
+                  <UiButton type="button" variant="outline">
+                    Abbrechen
+                  </UiButton>
                 </UiDialogClose>
                 <UiButton type="submit">Erstellen</UiButton>
               </UiDialogFooter>
@@ -1363,16 +1368,102 @@ function EventSettingsDialog({
   );
 }
 
+function InitialSetupGuide({
+  eventId,
+  activeTab,
+  activePlayers,
+  activeCourts,
+}: {
+  eventId: string;
+  activeTab: EventTab;
+  activePlayers: number;
+  activeCourts: number;
+}) {
+  const participantsReady = activePlayers >= 4;
+  const courtsReady = activeCourts >= 1;
+  const tournamentReady = participantsReady && courtsReady;
+  const instructions: Record<EventTab, string> = {
+    teilnehmer: "Trage mindestens vier aktive Teilnehmer ein.",
+    plaetze: "Lege die verfügbaren Plätze an und aktiviere mindestens einen.",
+    dashboard: tournamentReady
+      ? "Alles bereit: Jetzt kann die erste Runde ausgelost werden."
+      : "Teilnehmer und Plätze müssen bereit sein, bevor du auslosen kannst.",
+    bestenliste: "Die Bestenliste füllt sich nach der ersten gespielten Runde.",
+  };
+  const steps = [
+    {
+      tab: "teilnehmer" as const,
+      label: "Teilnehmer",
+      status: `${activePlayers} aktiv`,
+      complete: participantsReady,
+    },
+    {
+      tab: "plaetze" as const,
+      label: "Plätze",
+      status: `${activeCourts} aktiv`,
+      complete: courtsReady,
+    },
+    {
+      tab: "dashboard" as const,
+      label: "Erste Runde",
+      status: tournamentReady ? "Bereit" : "Offen",
+      complete: false,
+    },
+  ];
+
+  return (
+    <section
+      className="initial-setup-guide"
+      aria-labelledby="setup-guide-title"
+    >
+      <div className="setup-guide-copy">
+        <p className="kicker">Turniervorbereitung</p>
+        <h2 id="setup-guide-title">In drei Schritten zur ersten Runde</h2>
+        <p>{instructions[activeTab]}</p>
+      </div>
+      <ol className="setup-steps">
+        {steps.map((step, index) => (
+          <li key={step.tab}>
+            <RouterLink
+              className={cn(
+                "setup-step",
+                step.complete && "is-complete",
+                activeTab === step.tab && "is-current",
+              )}
+              to={`/admin/events/${eventId}/${step.tab}`}
+              aria-current={activeTab === step.tab ? "step" : undefined}
+            >
+              <span className="setup-step-marker" aria-hidden="true">
+                {step.complete ? <Check weight="bold" /> : index + 1}
+              </span>
+              <span className="setup-step-copy">
+                <strong>{step.label}</strong>
+                <small>{step.status}</small>
+              </span>
+            </RouterLink>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function CourtManager({
   eventId,
   courts,
   mutate,
   editable = true,
+  showSetupAction = false,
+  setupReady = false,
+  onSetupContinue,
 }: {
   eventId: string;
   courts: Court[];
   mutate: (path: string, init: RequestInit) => Promise<void>;
   editable?: boolean;
+  showSetupAction?: boolean;
+  setupReady?: boolean;
+  onSetupContinue?: () => void;
 }) {
   const [editingId, setEditingId] = useState("");
   const [editingName, setEditingName] = useState("");
@@ -1382,13 +1473,10 @@ function CourtManager({
   async function addCourt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    await mutate(
-      `/admin/events/${eventId}/courts`,
-      {
-        method: "POST",
-        body: JSON.stringify({ name: new FormData(form).get("name") }),
-      },
-    );
+    await mutate(`/admin/events/${eventId}/courts`, {
+      method: "POST",
+      body: JSON.stringify({ name: new FormData(form).get("name") }),
+    });
     form.reset();
   }
 
@@ -1517,6 +1605,13 @@ function CourtManager({
           )}
         </div>
       </UiCardContent>
+      {showSetupAction && (
+        <UiCardFooter className="setup-continue">
+          <UiButton size="lg" disabled={!setupReady} onClick={onSetupContinue}>
+            Weiter zum Dashboard <ArrowRight data-icon="inline-end" />
+          </UiButton>
+        </UiCardFooter>
+      )}
       <UiDialog
         open={Boolean(editingCourt)}
         onOpenChange={(open) => {
@@ -1532,13 +1627,10 @@ function CourtManager({
               className="court-edit-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                void mutate(
-                  `/admin/courts/${editingCourt.id}`,
-                  {
-                    method: "PATCH",
-                    body: JSON.stringify({ name: editingName }),
-                  },
-                ).then(() => setEditingId(""));
+                void mutate(`/admin/courts/${editingCourt.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ name: editingName }),
+                }).then(() => setEditingId(""));
               }}
             >
               <UiField>
@@ -1574,14 +1666,23 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
   const routeLocation = useLocation();
   const requestedTab =
     routeLocation.pathname.split("/").filter(Boolean).at(-1) ?? "";
-  const activeTab: EventTab = isEventTab(requestedTab)
-    ? requestedTab
-    : "dashboard";
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState("");
+  const setupActivePlayers =
+    data?.players.filter((player) => player.active).length ?? 0;
+  const setupActiveCourts =
+    data?.courts.filter((court) => court.active).length ?? 0;
+  const defaultTab: EventTab =
+    data && data.rounds.length === 0
+      ? getInitialSetupTab(setupActivePlayers, setupActiveCourts)
+      : "dashboard";
+  const activeTab: EventTab = isEventTab(requestedTab)
+    ? requestedTab
+    : defaultTab;
   const [duration, setDuration] = useState(20);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [participantAddOpen, setParticipantAddOpen] = useState(false);
+  const [participantAdding, setParticipantAdding] = useState(false);
   const [correctionPlayerId, setCorrectionPlayerId] = useState("");
   const participantNameRef = useRef<HTMLInputElement>(null);
   const [matchEntryStatuses, setMatchEntryStatuses] = useState<
@@ -1604,11 +1705,11 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [id]);
   useEffect(() => {
-    if (!isEventTab(requestedTab)) {
-      nav(`/admin/events/${id}/dashboard`, { replace: true });
+    if (data && data.event.id === id && !isEventTab(requestedTab)) {
+      nav(`/admin/events/${id}/${defaultTab}`, { replace: true });
       return;
     }
-  }, [id, nav, requestedTab]);
+  }, [data, defaultTab, id, nav, requestedTab]);
   useEffect(() => {
     setMatchEntryStatuses({});
   }, [data?.currentRound?.id, data?.currentRound?.state]);
@@ -1617,8 +1718,9 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
       setParticipantAddOpen(false);
       return;
     }
-    if (participantAddOpen) participantNameRef.current?.focus();
-  }, [activeTab, configurationLocked, participantAddOpen]);
+    if (participantAddOpen && !participantAdding)
+      participantNameRef.current?.focus();
+  }, [activeTab, configurationLocked, participantAddOpen, participantAdding]);
   const updateMatchEntryStatus = useCallback(
     (matchId: string, status: MatchEntryStatus) => {
       setMatchEntryStatuses((current) => {
@@ -1700,8 +1802,11 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
     participantCount = data.players.length,
     activePlayers = data.players.filter((p) => p.active).length,
     activeCourts = data.courts.filter((court) => court.active).length,
-    perfectActiveCount = activePlayers >= 4 && activePlayers % 4 === 0,
-    nextSitOutCount = activePlayers >= 4 ? activePlayers % 4 : 0,
+    nextSitOutCount = getSittingOutCount(activePlayers, activeCourts),
+    perfectActiveCount =
+      activePlayers >= 4 && activeCourts > 0 && nextSitOutCount === 0,
+    initialSetup = data.rounds.length === 0,
+    initialSetupReady = activePlayers >= 4 && activeCourts > 0,
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     resultEntryOpen = isResultEntryRoundState(round?.state),
@@ -1712,25 +1817,26 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
       matchEntryStatuses,
     );
   const generate = () =>
-    mutate(
-      `/admin/events/${id}/generate`,
-      {
-        method: "POST",
-        body: JSON.stringify({}),
-      },
-    );
+    mutate(`/admin/events/${id}/generate`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (participantAdding) return;
     const f = e.currentTarget;
-    await mutate(
-      `/admin/events/${id}/players`,
-      {
+    setParticipantAdding(true);
+    try {
+      await mutate(`/admin/events/${id}/players`, {
         method: "POST",
         body: JSON.stringify({ name: new FormData(f).get("name") }),
-      },
-    );
-    f.reset();
-    setParticipantAddOpen(false);
+      });
+      f.reset();
+    } catch {
+      // The shared error alert contains the actionable API message.
+    } finally {
+      setParticipantAdding(false);
+    }
   }
   return (
     <UiTooltipProvider>
@@ -1802,13 +1908,10 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       </UiDropdownMenuItem>
                       <UiDropdownMenuItem
                         onSelect={() => {
-                          void mutate(
-                            `/admin/events/${id}`,
-                            {
-                              method: "PATCH",
-                              body: JSON.stringify({ status: "archived" }),
-                            },
-                          ).catch(() => {});
+                          void mutate(`/admin/events/${id}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ status: "archived" }),
+                          }).catch(() => {});
                         }}
                       >
                         <Archive /> Archivieren
@@ -1840,13 +1943,10 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
           onOpenChange={setSettingsOpen}
           duration={duration}
           save={(durationMinutes) =>
-            mutate(
-              `/admin/events/${id}`,
-              {
-                method: "PATCH",
-                body: JSON.stringify({ durationMinutes }),
-              },
-            )
+            mutate(`/admin/events/${id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ durationMinutes }),
+            })
           }
         />
         <nav className="event-tabs" aria-label="Veranstaltungsbereiche">
@@ -1860,6 +1960,14 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
             <UiAlertTitle>Anfrage fehlgeschlagen</UiAlertTitle>
             <UiAlertDescription>{error}</UiAlertDescription>
           </UiAlert>
+        )}
+        {initialSetup && (
+          <InitialSetupGuide
+            eventId={id}
+            activeTab={activeTab}
+            activePlayers={activePlayers}
+            activeCourts={activeCourts}
+          />
         )}
         <div
           className={cn(
@@ -1878,7 +1986,7 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
               <UiCardHeader>
                 <UiCardTitle role="heading" aria-level={2}>
                   {!round
-                    ? "Nächste Runde auslosen"
+                    ? "Erste Runde auslosen"
                     : round.state === "completed"
                       ? "Aktualisierte Bestenliste"
                       : resultEntryOpen
@@ -1889,7 +1997,7 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                 </UiCardTitle>
                 <UiCardDescription>
                   {!round
-                    ? "Wer spielt als Nächstes zusammen?"
+                    ? "Wer spielt in der ersten Runde zusammen?"
                     : round.state === "completed"
                       ? `Runde ${round.round_number} ist abgeschlossen.`
                       : resultEntryOpen
@@ -1916,17 +2024,16 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       size="lg"
                       data-primary-round-action
                       onClick={() =>
-                        mutate(
-                          `/admin/rounds/${round.id}/action`,
-                          {
-                            method: "POST",
-                            body: JSON.stringify({ action: "start" }),
-                          },
-                        )
+                        mutate(`/admin/rounds/${round.id}/action`, {
+                          method: "POST",
+                          body: JSON.stringify({ action: "start" }),
+                        })
                       }
                     >
-                      <Play data-icon="inline-start" weight="fill" /> Runde
-                      starten
+                      <Play data-icon="inline-start" weight="fill" />
+                      {round.round_number === 1
+                        ? "Erste Runde starten"
+                        : "Runde starten"}
                     </UiButton>
                     <UiButton
                       className="redraw-action"
@@ -1996,7 +2103,7 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                     <span className="draw-action-label">
                       {round?.state === "completed"
                         ? "Nächste Runde auslosen"
-                        : "Doppel auslosen"}
+                        : "Erste Runde auslosen"}
                     </span>
                   </UiButton>
                 )}
@@ -2027,13 +2134,10 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       size="lg"
                       disabled={!roundCanComplete}
                       onClick={() => {
-                        void mutate(
-                          `/admin/rounds/${round.id}/complete`,
-                          {
-                            method: "POST",
-                            body: JSON.stringify({ allowMissing: false }),
-                          },
-                        ).catch(() => {});
+                        void mutate(`/admin/rounds/${round.id}/complete`, {
+                          method: "POST",
+                          body: JSON.stringify({ allowMissing: false }),
+                        }).catch(() => {});
                       }}
                     >
                       <Check data-icon="inline-start" /> Runde abschließen
@@ -2050,6 +2154,9 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                 courts={data.courts}
                 mutate={mutate}
                 editable={!configurationLocked}
+                showSetupAction={initialSetup}
+                setupReady={initialSetupReady}
+                onSetupContinue={() => nav(`/admin/events/${id}/dashboard`)}
               />
             )}
             {activeTab === "teilnehmer" && (
@@ -2099,7 +2206,7 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       className="participant-add-form"
                       onSubmit={add}
                       onKeyDown={(event) => {
-                        if (event.key === "Escape") {
+                        if (event.key === "Escape" && !participantAdding) {
                           event.preventDefault();
                           setParticipantAddOpen(false);
                         }
@@ -2118,6 +2225,8 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                           name="name"
                           maxLength={40}
                           placeholder="Vorname oder Spitzname"
+                          disabled={participantAdding}
+                          aria-busy={participantAdding}
                           required
                         />
                       </UiField>
@@ -2125,11 +2234,16 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                         <UiButton
                           type="button"
                           variant="outline"
+                          disabled={participantAdding}
                           onClick={() => setParticipantAddOpen(false)}
                         >
                           Abbrechen
                         </UiButton>
-                        <UiButton type="submit">Hinzufügen</UiButton>
+                        <UiButton type="submit" disabled={participantAdding}>
+                          {participantAdding
+                            ? "Wird hinzugefügt…"
+                            : "Hinzufügen"}
+                        </UiButton>
                       </div>
                     </form>
                   )}
@@ -2145,11 +2259,13 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                         ? "Noch keine aktiven Teilnehmer."
                         : activePlayers < 4
                           ? `${activePlayers} aktiv: mindestens 4 für eine Runde.`
-                          : perfectActiveCount
-                            ? `Perfekt: ${activePlayers} aktive Teilnehmer, niemand setzt aus.`
-                            : `${activePlayers} aktiv: ${nextSitOutCount} ${
-                                nextSitOutCount === 1 ? "setzt" : "setzen"
-                              } bei der nächsten Runde aus.`}
+                          : activeCourts === 0
+                            ? `${activePlayers} aktiv: Aktiviere mindestens einen Platz für die Auslosung.`
+                            : perfectActiveCount
+                              ? `Perfekt: ${activePlayers} aktive Teilnehmer, niemand setzt aus.`
+                              : `${activePlayers} aktiv: ${nextSitOutCount} ${
+                                  nextSitOutCount === 1 ? "setzt" : "setzen"
+                                } bei der nächsten Runde aus.`}
                     </span>
                   </div>
                   {rankedPlayers.length ? (
@@ -2222,6 +2338,18 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                     </p>
                   )}
                 </UiCardContent>
+                {initialSetup && (
+                  <UiCardFooter className="setup-continue">
+                    <UiButton
+                      size="lg"
+                      disabled={activePlayers < 4}
+                      onClick={() => nav(`/admin/events/${id}/plaetze`)}
+                    >
+                      Weiter zu den Plätzen{" "}
+                      <ArrowRight data-icon="inline-end" />
+                    </UiButton>
+                  </UiCardFooter>
+                )}
                 <UiDialog
                   open={Boolean(correctionPlayer)}
                   onOpenChange={(open) => {
@@ -2243,13 +2371,10 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                           matchCount={correctionMatches.length}
                           editable={!configurationLocked}
                           save={(name) =>
-                            mutate(
-                              `/admin/players/${correctionPlayer.id}`,
-                              {
-                                method: "PATCH",
-                                body: JSON.stringify({ name }),
-                              },
-                            )
+                            mutate(`/admin/players/${correctionPlayer.id}`, {
+                              method: "PATCH",
+                              body: JSON.stringify({ name }),
+                            })
                           }
                         />
                         <div className="correction-section-heading">
@@ -2268,16 +2393,13 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                                 players={pm}
                                 playerId={correctionPlayer.id}
                                 save={(a, b) =>
-                                  mutate(
-                                    `/admin/matches/${match.id}/result`,
-                                    {
-                                      method: "PUT",
-                                      body: JSON.stringify({
-                                        teamAGames: a,
-                                        teamBGames: b,
-                                      }),
-                                    },
-                                  )
+                                  mutate(`/admin/matches/${match.id}/result`, {
+                                    method: "PUT",
+                                    body: JSON.stringify({
+                                      teamAGames: a,
+                                      teamBGames: b,
+                                    }),
+                                  })
                                 }
                               />
                             ))}
@@ -2464,9 +2586,7 @@ function PublicEvent() {
                 aria-label={`Runde ${currentRound?.round_number ?? "–"}`}
               >
                 <small aria-hidden="true">Runde</small>
-                <b aria-hidden="true">
-                  {currentRound?.round_number ?? "–"}
-                </b>
+                <b aria-hidden="true">{currentRound?.round_number ?? "–"}</b>
               </span>
               <TennisBall aria-hidden="true" />
             </div>
