@@ -3,10 +3,39 @@ import {
   canCompleteRound,
   canCompleteRoundWithEntries,
   countCompletedResults,
+  getRoundSecondsLeft,
+  isResultEntryRoundState,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
 
 describe("admin dashboard result state", () => {
+  it("keeps an expired control timer at zero without changing state", () => {
+    expect(
+      getRoundSecondsLeft(
+        {
+          state: "running",
+          duration_seconds: 1200,
+          expires_at: "2026-07-11T10:20:00.000Z",
+        },
+        Date.parse("2026-07-11T10:21:30.000Z"),
+      ),
+    ).toBe(0);
+  });
+
+  it("freezes the control timer at the pause timestamp", () => {
+    expect(
+      getRoundSecondsLeft(
+        {
+          state: "paused",
+          duration_seconds: 1200,
+          expires_at: "2026-07-11T10:20:00.000Z",
+          paused_at: "2026-07-11T10:08:30.000Z",
+        },
+        Date.parse("2026-07-11T10:15:00.000Z"),
+      ),
+    ).toBe(690);
+  });
+
   it("counts only played matches as completed results", () => {
     expect(
       countCompletedResults([
@@ -18,21 +47,25 @@ describe("admin dashboard result state", () => {
   });
 
   it("enables round completion only when every result is played", () => {
-    expect(
-      canCompleteRound("results", [
-        { result_type: "played" },
-        { result_type: "played" },
-      ]),
-    ).toBe(true);
+    const playedMatches = [
+      { result_type: "played" },
+      { result_type: "played" },
+    ];
+
+    expect(isResultEntryRoundState("running")).toBe(true);
+    expect(isResultEntryRoundState("paused")).toBe(true);
+    expect(isResultEntryRoundState("results")).toBe(true);
+    expect(canCompleteRound("running", playedMatches)).toBe(true);
+    expect(canCompleteRound("paused", playedMatches)).toBe(true);
+    expect(canCompleteRound("results", playedMatches)).toBe(true);
     expect(
       canCompleteRound("results", [
         { result_type: "played" },
         { result_type: "pending" },
       ]),
     ).toBe(false);
-    expect(canCompleteRound("running", [{ result_type: "played" }])).toBe(
-      false,
-    );
+    expect(canCompleteRound("published", playedMatches)).toBe(false);
+    expect(canCompleteRound("completed", playedMatches)).toBe(false);
     expect(canCompleteRound("results", [])).toBe(false);
   });
 
@@ -43,7 +76,7 @@ describe("admin dashboard result state", () => {
     ];
 
     expect(
-      canCompleteRoundWithEntries("results", matches, {
+      canCompleteRoundWithEntries("running", matches, {
         "match-1": {
           complete: true,
           valid: true,

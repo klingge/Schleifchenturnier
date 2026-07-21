@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import {
+  Link as RouterLink,
   NavLink,
   Navigate,
   Route,
@@ -15,31 +16,35 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import { Badge, Button, Dialog, TextField } from "@radix-ui/themes";
 import {
   Archive,
+  ArrowLeft,
   ArrowClockwise,
+  CalendarBlank,
   Check,
+  CheckCircle,
   Copy,
   DotsThreeVertical,
-  Link,
+  GearSix,
+  Link as LinkIcon,
   LockKey,
   Minus,
   Pause,
   PencilSimple,
   Play,
   Plus,
-  SkipForward,
+  Shuffle,
   SignOut,
   TennisBall,
   Timer,
   Trash,
   Trophy,
   Users,
+  WarningCircle,
+  X,
 } from "@phosphor-icons/react";
 import QRCode from "qrcode";
 import hairBow from "./assets/hair-bow.png";
-import raffleBox from "./assets/raffle-box.png";
 import sgaLogo from "./assets/sga-logo.png";
 import {
   AlertDialog as UiAlertDialog,
@@ -85,6 +90,14 @@ import {
 } from "@/components/ui/field";
 import { Input as UiInput } from "@/components/ui/input";
 import {
+  DropdownMenu as UiDropdownMenu,
+  DropdownMenuContent as UiDropdownMenuContent,
+  DropdownMenuGroup as UiDropdownMenuGroup,
+  DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuSeparator as UiDropdownMenuSeparator,
+  DropdownMenuTrigger as UiDropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   InputGroup as UiInputGroup,
   InputGroupAddon as UiInputGroupAddon,
   InputGroupButton as UiInputGroupButton,
@@ -92,12 +105,15 @@ import {
 } from "@/components/ui/input-group";
 import { ScrollArea as UiScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
+import { Progress as UiProgress } from "@/components/ui/progress";
 import { Switch as UiSwitch } from "@/components/ui/switch";
 import { TooltipProvider as UiTooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   canCompleteRoundWithEntries,
   countCompletedResults,
+  getRoundSecondsLeft,
+  isResultEntryRoundState,
   type MatchEntryStatus,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
@@ -136,6 +152,7 @@ type Round = {
   state: "published" | "running" | "paused" | "results" | "completed";
   duration_seconds: number;
   expires_at: string | null;
+  paused_at?: string | null;
   matches: Match[];
   sitting_out_player_ids: string[];
 };
@@ -196,30 +213,71 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data;
 }
 
+type LogoutHandler = () => void | Promise<void>;
+
+function LogoutMenuItem({ logout }: { logout: LogoutHandler }) {
+  return (
+    <UiDropdownMenuItem
+      onSelect={() => {
+        void logout();
+      }}
+    >
+      <SignOut /> Abmelden
+    </UiDropdownMenuItem>
+  );
+}
+
 function Shell({
   children,
   logout,
 }: {
   children: React.ReactNode;
-  logout?: () => void;
+  logout?: LogoutHandler;
 }) {
+  const location = useLocation();
+  const eventMenuOwnsLogout = /^\/admin\/events\/[^/]+(?:\/|$)/.test(
+    location.pathname,
+  );
   return (
     <>
+      <a className="skip-link" href="#main-content">
+        Zum Inhalt springen
+      </a>
       <header>
         <a className="brand" href={logout ? "/admin" : "/"}>
-          <img src={sgaLogo} alt="SG Arheilgen Tennis" />
+          <img
+            src={sgaLogo}
+            alt="SG Arheilgen Tennis"
+            width="512"
+            height="512"
+            fetchPriority="high"
+          />
           <span>
-            <strong>SGA Sommerfest</strong>
+            <strong>SGA Schleifchenturnier</strong>
             <small>SG Arheilgen Tennis</small>
           </span>
         </a>
-        {logout && (
-          <Button variant="ghost" color="gray" onClick={logout}>
-            <SignOut /> Abmelden
-          </Button>
+        {logout && !eventMenuOwnsLogout && (
+          <UiDropdownMenu>
+            <UiDropdownMenuTrigger asChild>
+              <UiButton
+                className="shell-menu-trigger"
+                variant="ghost"
+                size="icon-lg"
+                aria-label="Kontomenü öffnen"
+              >
+                <DotsThreeVertical />
+              </UiButton>
+            </UiDropdownMenuTrigger>
+            <UiDropdownMenuContent align="end" className="min-w-44">
+              <LogoutMenuItem logout={logout} />
+            </UiDropdownMenuContent>
+          </UiDropdownMenu>
         )}
       </header>
-      <main>{children}</main>
+      <main id="main-content" tabIndex={-1}>
+        {children}
+      </main>
     </>
   );
 }
@@ -270,23 +328,22 @@ function Login({ done }: { done: () => void }) {
     <Shell>
       <div className="login">
         <section>
-          <Badge color="blue">Turnierleitung</Badge>
+          <UiBadge variant="secondary">Turnierleitung</UiBadge>
           <h1>SGA Sommerfest</h1>
           <p>
             Spieler eintragen, faire Doppel auslosen und Ergebnisse direkt
             festhalten.
           </p>
-          <div className="login-brandmark" aria-hidden="true">
-            <img src={sgaLogo} alt="" />
-            <span>Teilnehmer warten</span>
-          </div>
+          <p className="login-note">
+            Eine zentrale Oberfläche für den gesamten Turniertag.
+          </p>
         </section>
         <form className="panel" onSubmit={submit}>
           <LockKey size={30} />
           <h2>Organisator anmelden</h2>
           <label>
             Passwort
-            <TextField.Root
+            <UiInput
               type="password"
               value={pw}
               onChange={(e) => setPw(e.target.value)}
@@ -295,7 +352,7 @@ function Login({ done }: { done: () => void }) {
             />
           </label>
           {error && <p className="error">{error}</p>}
-          <Button size="3">Anmelden</Button>
+          <UiButton size="lg">Anmelden</UiButton>
         </form>
       </div>
     </Shell>
@@ -305,11 +362,9 @@ function Login({ done }: { done: () => void }) {
 function DeleteEventDialog({
   event,
   onDeleted,
-  compact = false,
 }: {
   event: Pick<EventRow, "id" | "name">;
   onDeleted: () => void;
-  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -341,14 +396,12 @@ function DeleteEventDialog({
       }}
     >
       <UiAlertDialogTrigger asChild>
-        <UiButton
-          variant={compact ? "ghost" : "destructive"}
-          size={compact ? "icon" : "default"}
-          aria-label={`Veranstaltung ${event.name} löschen`}
+        <UiDropdownMenuItem
+          variant="destructive"
+          onSelect={(selectEvent) => selectEvent.preventDefault()}
         >
-          <Trash data-icon={compact ? undefined : "inline-start"} />
-          {!compact && "Löschen"}
-        </UiButton>
+          <Trash /> Veranstaltung löschen
+        </UiDropdownMenuItem>
       </UiAlertDialogTrigger>
       <UiAlertDialogContent>
         <UiAlertDialogHeader>
@@ -409,28 +462,30 @@ function Dashboard() {
     }
   }
   return (
-    <>
+    <div className="overview-page">
       <div className="heading">
         <div>
           <p className="kicker">Veranstaltungen</p>
           <h1>Turnierübersicht</h1>
         </div>
-        <Dialog.Root open={open} onOpenChange={setOpen}>
-          <Dialog.Trigger>
-            <Button size="3">
+        <UiDialog open={open} onOpenChange={setOpen}>
+          <UiDialogTrigger asChild>
+            <UiButton size="lg">
               <Plus /> Veranstaltung
-            </Button>
-          </Dialog.Trigger>
-          <Dialog.Content maxWidth="520px">
-            <Dialog.Title>Neue Veranstaltung</Dialog.Title>
+            </UiButton>
+          </UiDialogTrigger>
+          <UiDialogContent className="sm:max-w-[520px]">
+            <UiDialogHeader>
+              <UiDialogTitle>Neue Veranstaltung</UiDialogTitle>
+            </UiDialogHeader>
             <form className="form" onSubmit={create}>
               <label>
                 Name
-                <TextField.Root name="name" required />
+                <UiInput name="name" required />
               </label>
               <label>
                 Rundendauer in Minuten
-                <TextField.Root
+                <UiInput
                   name="durationMinutes"
                   type="number"
                   defaultValue="20"
@@ -439,10 +494,15 @@ function Dashboard() {
                   required
                 />
               </label>
-              <Button>Erstellen</Button>
+              <UiDialogFooter>
+                <UiDialogClose asChild>
+                  <UiButton type="button" variant="outline">Abbrechen</UiButton>
+                </UiDialogClose>
+                <UiButton type="submit">Erstellen</UiButton>
+              </UiDialogFooter>
             </form>
-          </Dialog.Content>
-        </Dialog.Root>
+          </UiDialogContent>
+        </UiDialog>
       </div>
       {error && <p className="notice error">{error}</p>}
       {items === null ? (
@@ -464,43 +524,68 @@ function Dashboard() {
           text="Lege das erste Turnier an und öffne danach die Lobby."
         />
       ) : (
-        <div className="events">
+        <div className="events" aria-label="Veranstaltungen">
           {items.map((x) => (
             <div className="event-row" key={x.id}>
-              <button
-                className="event-open"
-                onClick={() => nav(`/admin/events/${x.id}`)}
-              >
-                <span>
+              <RouterLink className="event-open" to={`/admin/events/${x.id}`}>
+                <span className="event-main">
                   <strong>{x.name}</strong>
-                  <small>
-                    {x.court_count ?? 0} Plätze,{" "}
-                    {x.default_round_duration_seconds / 60} Minuten
-                  </small>
+                  <span className="event-meta">
+                    <small>
+                      <CalendarBlank aria-hidden="true" />
+                      {new Intl.DateTimeFormat("de-DE").format(
+                        new Date(`${x.event_date}T12:00:00`),
+                      )}
+                    </small>
+                    <small>
+                      <TennisBall aria-hidden="true" />
+                      {x.court_count ?? 0} Plätze
+                    </small>
+                    <small>
+                      <Timer aria-hidden="true" />
+                      {x.default_round_duration_seconds / 60} Minuten
+                    </small>
+                  </span>
                 </span>
-                <Badge color={x.status === "archived" ? "gray" : "blue"}>
+                <UiBadge
+                  variant={x.status === "archived" ? "outline" : "secondary"}
+                >
                   {x.status === "archived"
                     ? "Archiviert"
                     : x.status === "lobby"
                       ? "Lobby"
                       : "Aktiv"}
-                </Badge>
-              </button>
-              <DeleteEventDialog
-                event={x}
-                compact
-                onDeleted={() =>
-                  setItems(
-                    (current) =>
-                      current?.filter((item) => item.id !== x.id) ?? null,
-                  )
-                }
-              />
+                </UiBadge>
+              </RouterLink>
+              <UiDropdownMenu>
+                <UiDropdownMenuTrigger asChild>
+                  <UiButton
+                    variant="ghost"
+                    size="icon-lg"
+                    aria-label={`Aktionen für ${x.name}`}
+                  >
+                    <DotsThreeVertical />
+                  </UiButton>
+                </UiDropdownMenuTrigger>
+                <UiDropdownMenuContent align="end" className="min-w-52">
+                  <UiDropdownMenuGroup>
+                    <DeleteEventDialog
+                      event={x}
+                      onDeleted={() =>
+                        setItems(
+                          (current) =>
+                            current?.filter((item) => item.id !== x.id) ?? null,
+                        )
+                      }
+                    />
+                  </UiDropdownMenuGroup>
+                </UiDropdownMenuContent>
+              </UiDropdownMenu>
             </div>
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -535,8 +620,14 @@ function Leaderboard({
               role="img"
               aria-label={`${p.wins} ${p.wins === 1 ? "Sieg" : "Siege"}`}
             >
-              <img src={hairBow} alt="" aria-hidden="true" />
               <span className="win-count">{p.wins}</span>
+              <img
+                src={hairBow}
+                alt=""
+                width="292"
+                height="292"
+                aria-hidden="true"
+              />
             </span>
             <small className="game-difference">
               Diff. {p.gameDifference > 0 ? "+" : ""}
@@ -564,7 +655,7 @@ function QR({ url }: { url: string }) {
     >
       <UiDialogTrigger asChild>
         <UiButton variant="outline">
-          <Link data-icon="inline-start" /> Teilnehmeransicht
+          <LinkIcon data-icon="inline-start" /> Teilnehmeransicht
         </UiButton>
       </UiDialogTrigger>
       <UiDialogContent className="sm:max-w-md">
@@ -573,7 +664,12 @@ function QR({ url }: { url: string }) {
         </UiDialogHeader>
         <div className="qr">
           {img ? (
-            <img src={img} alt="QR-Code zur Teilnehmeransicht" />
+            <img
+              src={img}
+              alt="QR-Code zur Teilnehmeransicht"
+              width="420"
+              height="420"
+            />
           ) : (
             <UiSkeleton className="size-72" />
           )}
@@ -620,6 +716,15 @@ function MatchCard({
   const saved = canSave && currentKey === lastSaved;
   const failed = currentKey !== "" && currentKey === failedKey;
   const complete = saved && !saving && !failed;
+  const saveState = saved
+    ? "Gespeichert"
+    : failed
+      ? "Speichern fehlgeschlagen"
+      : saving
+        ? "Speichert…"
+        : canSave
+          ? "Speichert automatisch"
+          : "Offen";
   useEffect(() => {
     setA(m.team_a_games);
     setB(m.team_b_games);
@@ -668,7 +773,7 @@ function MatchCard({
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
-      {players.get(id)?.display_name}
+      <span className="player-name">{players.get(id)?.display_name}</span>
     </span>
   );
   return (
@@ -682,8 +787,31 @@ function MatchCard({
     >
       <header className="court-label">
         <b>{courtName(m)}</b>
-        {m.result_type === "played" && (
-          <UiBadge variant="secondary">Gespeichert</UiBadge>
+        {result && (
+          <span
+            className={cn(
+              "court-save-status",
+              saved && "saved",
+              saving && "saving",
+              failed && "failed",
+            )}
+            role="status"
+            aria-live="polite"
+          >
+            {saved ? (
+              <Check aria-hidden="true" />
+            ) : failed ? (
+              <WarningCircle aria-hidden="true" />
+            ) : saving || canSave ? (
+              <ArrowClockwise
+                className={cn(saving && "is-spinning")}
+                aria-hidden="true"
+              />
+            ) : (
+              <PencilSimple aria-hidden="true" />
+            )}
+            {saveState}
+          </span>
         )}
       </header>
       <div className="match-board">
@@ -713,25 +841,6 @@ function MatchCard({
           <ScorePicker label="Team links" value={a} onChange={setA} />
           <b className="score-divider">:</b>
           <ScorePicker label="Team rechts" value={b} onChange={setB} />
-          <small
-            className={
-              saved
-                ? "save-state saved"
-                : failed
-                  ? "save-state failed"
-                  : "save-state"
-            }
-          >
-            {saved
-              ? "Gespeichert"
-              : failed
-                ? "Speichern fehlgeschlagen"
-                : saving
-                  ? "Speichert…"
-                  : canSave
-                    ? "Speichert automatisch"
-                    : "Beide Teams wählen"}
-          </small>
         </footer>
       )}
     </article>
@@ -758,9 +867,9 @@ function ScorePicker({
         label.includes("links") && "is-left",
         label.includes("rechts") && "is-right",
       )}
+      role="group"
       aria-label={label}
     >
-      <span className="score-entry-label">{label}</span>
       <div className="score-picker">
         {scoreValues.map((score) => (
           <button
@@ -1081,27 +1190,24 @@ function Clock({
   mutate,
 }: {
   round: Round;
-  mutate: (p: string, i: RequestInit, m?: string) => Promise<void>;
+  mutate: (p: string, i: RequestInit) => Promise<void>;
 }) {
-  const [left, setLeft] = useState(round.duration_seconds);
+  const [left, setLeft] = useState(() => getRoundSecondsLeft(round));
   useEffect(() => {
+    setLeft(getRoundSecondsLeft(round));
     if (round.state !== "running" || !round.expires_at) return;
     const tick = () => {
-      const s = Math.max(
-        0,
-        Math.ceil((Date.parse(round.expires_at!) - Date.now()) / 1000),
-      );
-      setLeft(s);
-      if (!s)
-        mutate(`/admin/rounds/${round.id}/action`, {
-          method: "POST",
-          body: JSON.stringify({ action: "end" }),
-        });
+      setLeft(getRoundSecondsLeft(round));
     };
-    tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [round.id, round.state, round.expires_at]);
+  }, [
+    round.id,
+    round.state,
+    round.duration_seconds,
+    round.expires_at,
+    round.paused_at,
+  ]);
   if (["published", "results"].includes(round.state))
     return (
       <UiBadge
@@ -1111,12 +1217,21 @@ function Clock({
       </UiBadge>
     );
   return (
-    <div className="clock">
-      <b>
-        {String(Math.floor(left / 60)).padStart(2, "0")}:
-        {String(left % 60).padStart(2, "0")}
-      </b>
-      <span>{round.state === "paused" ? "Pausiert" : "Läuft"}</span>
+    <div className={cn("clock", left === 0 && "is-expired")}>
+      <div className="clock-readout">
+        <Timer aria-hidden="true" />
+        <b role="timer" aria-label={`${left} Sekunden verbleibend`}>
+          {String(Math.floor(left / 60)).padStart(2, "0")}:
+          {String(left % 60).padStart(2, "0")}
+        </b>
+      </div>
+      <span aria-live="polite">
+        {left === 0
+          ? "Zeit abgelaufen"
+          : round.state === "paused"
+            ? "Pausiert"
+            : "Läuft"}
+      </span>
       <div className="clock-actions">
         {round.state === "running" ? (
           <UiButton
@@ -1147,21 +1262,104 @@ function Clock({
             <Play />
           </UiButton>
         )}
-        <UiButton
-          size="icon"
-          variant="secondary"
-          aria-label="Runde skippen"
-          onClick={() =>
-            mutate(`/admin/rounds/${round.id}/action`, {
-              method: "POST",
-              body: JSON.stringify({ action: "skip" }),
-            })
-          }
-        >
-          <SkipForward />
-        </UiButton>
       </div>
     </div>
+  );
+}
+
+function EventSettingsDialog({
+  open,
+  onOpenChange,
+  duration,
+  save,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  duration: number;
+  save: (durationMinutes: number) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(duration);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open) setDraft(duration);
+  }, [duration, open]);
+  const valid = Number.isInteger(draft) && draft >= 1 && draft <= 240;
+
+  return (
+    <UiDialog open={open} onOpenChange={onOpenChange}>
+      <UiDialogContent className="sm:max-w-md">
+        <UiDialogHeader>
+          <UiDialogTitle>Veranstaltungseinstellungen</UiDialogTitle>
+        </UiDialogHeader>
+        <form
+          className="event-settings-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!valid || saving) return;
+            setSaving(true);
+            void save(draft)
+              .then(() => onOpenChange(false))
+              .catch(() => {})
+              .finally(() => setSaving(false));
+          }}
+        >
+          <UiFieldGroup>
+            <UiField>
+              <UiFieldLabel htmlFor="default-round-duration">
+                Standard-Rundendauer
+              </UiFieldLabel>
+              <div className="duration-stepper">
+                <UiButton
+                  type="button"
+                  size="icon-lg"
+                  variant="outline"
+                  aria-label="Rundendauer um 5 Minuten verringern"
+                  disabled={draft <= 1 || saving}
+                  onClick={() =>
+                    setDraft((current) => Math.max(1, current - 5))
+                  }
+                >
+                  <Minus />
+                </UiButton>
+                <UiInput
+                  id="default-round-duration"
+                  className="duration-stepper-input"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="240"
+                  value={draft}
+                  aria-invalid={!valid}
+                  onChange={(event) => setDraft(Number(event.target.value))}
+                />
+                <UiButton
+                  type="button"
+                  size="icon-lg"
+                  variant="outline"
+                  aria-label="Rundendauer um 5 Minuten erhöhen"
+                  disabled={draft >= 240 || saving}
+                  onClick={() =>
+                    setDraft((current) => Math.min(240, current + 5))
+                  }
+                >
+                  <Plus />
+                </UiButton>
+              </div>
+            </UiField>
+          </UiFieldGroup>
+          <UiDialogFooter>
+            <UiDialogClose asChild>
+              <UiButton type="button" variant="outline" disabled={saving}>
+                Abbrechen
+              </UiButton>
+            </UiDialogClose>
+            <UiButton type="submit" disabled={!valid || saving}>
+              Speichern
+            </UiButton>
+          </UiDialogFooter>
+        </form>
+      </UiDialogContent>
+    </UiDialog>
   );
 }
 
@@ -1173,7 +1371,7 @@ function CourtManager({
 }: {
   eventId: string;
   courts: Court[];
-  mutate: (path: string, init: RequestInit, message?: string) => Promise<void>;
+  mutate: (path: string, init: RequestInit) => Promise<void>;
   editable?: boolean;
 }) {
   const [editingId, setEditingId] = useState("");
@@ -1190,7 +1388,6 @@ function CourtManager({
         method: "POST",
         body: JSON.stringify({ name: new FormData(form).get("name") }),
       },
-      "Platz hinzugefügt.",
     );
     form.reset();
   }
@@ -1208,12 +1405,12 @@ function CourtManager({
       </UiCardHeader>
       <UiCardContent>
         {!editable && (
-          <UiAlert className="configuration-lock">
+          <UiAlert className="configuration-lock" role="status">
             <LockKey />
-            <UiAlertTitle>Platzverwaltung gesperrt</UiAlertTitle>
+            <UiAlertTitle>Plätze im Lesemodus</UiAlertTitle>
             <UiAlertDescription>
-              Während der offenen Runde bleiben Plätze sichtbar. Änderungen sind
-              nach dem Rundenabschluss wieder möglich.
+              Während der offenen Runde bleiben die aktiven Plätze sichtbar.
+              Änderungen sind nach dem Rundenabschluss wieder möglich.
             </UiAlertDescription>
           </UiAlert>
         )}
@@ -1262,40 +1459,54 @@ function CourtManager({
               key={court.id}
               className={cn("court-visual-card", !court.active && "off")}
             >
-              <button
-                type="button"
-                className="court-open court-surface"
-                aria-label={`${court.name} umbenennen`}
-                disabled={!editable}
-                onClick={() => {
-                  setEditingId(court.id);
-                  setEditingName(court.name);
-                }}
-              >
-                <span className="court-diagram" aria-hidden="true">
-                  <span className="court-net" />
-                </span>
-                <span className="court-card-label">
-                  <strong>{court.name}</strong>
-                  <small>{court.active ? "Aktiv" : "Inaktiv"}</small>
-                </span>
-                {editable && <PencilSimple />}
-              </button>
+              {editable ? (
+                <button
+                  type="button"
+                  className="court-open court-surface"
+                  aria-label={`${court.name} umbenennen`}
+                  onClick={() => {
+                    setEditingId(court.id);
+                    setEditingName(court.name);
+                  }}
+                >
+                  <span className="court-diagram" aria-hidden="true">
+                    <span className="court-singles-lines" />
+                    <span className="court-service-lines" />
+                    <span className="court-net" />
+                  </span>
+                  <span className="court-card-label">
+                    <strong>{court.name}</strong>
+                  </span>
+                  <PencilSimple />
+                </button>
+              ) : (
+                <div className="court-open court-surface">
+                  <span className="court-diagram" aria-hidden="true">
+                    <span className="court-singles-lines" />
+                    <span className="court-service-lines" />
+                    <span className="court-net" />
+                  </span>
+                  <span className="court-card-label">
+                    <strong>{court.name}</strong>
+                  </span>
+                </div>
+              )}
               <div className="court-card-actions">
-                <UiBadge variant={court.active ? "secondary" : "outline"}>
+                <span className="court-card-status">
                   {court.active ? "Aktiv" : "Aus"}
-                </UiBadge>
-                <UiSwitch
-                  aria-label={`${court.name} aktiv`}
-                  checked={!!court.active}
-                  disabled={!editable}
-                  onCheckedChange={(active) =>
-                    mutate(`/admin/courts/${court.id}`, {
-                      method: "PATCH",
-                      body: JSON.stringify({ active }),
-                    }).catch(() => {})
-                  }
-                />
+                </span>
+                {editable && (
+                  <UiSwitch
+                    aria-label={`${court.name} aktiv`}
+                    checked={!!court.active}
+                    onCheckedChange={(active) =>
+                      mutate(`/admin/courts/${court.id}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ active }),
+                      }).catch(() => {})
+                    }
+                  />
+                )}
               </div>
             </div>
           ))}
@@ -1327,7 +1538,6 @@ function CourtManager({
                     method: "PATCH",
                     body: JSON.stringify({ name: editingName }),
                   },
-                  "Platz umbenannt.",
                 ).then(() => setEditingId(""));
               }}
             >
@@ -1358,7 +1568,7 @@ function CourtManager({
   );
 }
 
-function EventAdmin() {
+function EventAdmin({ logout }: { logout: LogoutHandler }) {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const routeLocation = useLocation();
@@ -1368,10 +1578,12 @@ function EventAdmin() {
     ? requestedTab
     : "dashboard";
   const [data, setData] = useState<EventData | null>(null),
-    [error, setError] = useState(""),
-    [note, setNote] = useState("");
+    [error, setError] = useState("");
   const [duration, setDuration] = useState(20);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [participantAddOpen, setParticipantAddOpen] = useState(false);
   const [correctionPlayerId, setCorrectionPlayerId] = useState("");
+  const participantNameRef = useRef<HTMLInputElement>(null);
   const [matchEntryStatuses, setMatchEntryStatuses] = useState<
     Record<string, MatchEntryStatus>
   >({});
@@ -1389,6 +1601,9 @@ function EventAdmin() {
     void load();
   }, [id]);
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [id]);
+  useEffect(() => {
     if (!isEventTab(requestedTab)) {
       nav(`/admin/events/${id}/dashboard`, { replace: true });
       return;
@@ -1397,6 +1612,13 @@ function EventAdmin() {
   useEffect(() => {
     setMatchEntryStatuses({});
   }, [data?.currentRound?.id, data?.currentRound?.state]);
+  useEffect(() => {
+    if (activeTab !== "teilnehmer" || configurationLocked) {
+      setParticipantAddOpen(false);
+      return;
+    }
+    if (participantAddOpen) participantNameRef.current?.focus();
+  }, [activeTab, configurationLocked, participantAddOpen]);
   const updateMatchEntryStatus = useCallback(
     (matchId: string, status: MatchEntryStatus) => {
       setMatchEntryStatuses((current) => {
@@ -1416,12 +1638,10 @@ function EventAdmin() {
     },
     [],
   );
-  async function mutate(path: string, init: RequestInit, message?: string) {
+  async function mutate(path: string, init: RequestInit) {
     setError("");
-    setNote("");
     try {
       await api(path, init);
-      if (message) setNote(message);
       await load();
     } catch (x) {
       const e = x as Error;
@@ -1484,10 +1704,7 @@ function EventAdmin() {
     nextSitOutCount = activePlayers >= 4 ? activePlayers % 4 : 0,
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
-    visibleLobbySlots = Math.max(
-      8,
-      Math.min(16, Math.max(activeCourts * 4, data.players.length + 4)),
-    ),
+    resultEntryOpen = isResultEntryRoundState(round?.state),
     completedResults = countCompletedResults(round?.matches ?? []),
     roundCanComplete = canCompleteRoundWithEntries(
       round?.state,
@@ -1499,9 +1716,8 @@ function EventAdmin() {
       `/admin/events/${id}/generate`,
       {
         method: "POST",
-        body: JSON.stringify({ durationMinutes: duration }),
+        body: JSON.stringify({}),
       },
-      "Doppel ausgelost und veröffentlicht.",
     );
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1512,9 +1728,9 @@ function EventAdmin() {
         method: "POST",
         body: JSON.stringify({ name: new FormData(f).get("name") }),
       },
-      "Teilnehmer hinzugefügt.",
     );
     f.reset();
+    setParticipantAddOpen(false);
   }
   return (
     <UiTooltipProvider>
@@ -1522,70 +1738,117 @@ function EventAdmin() {
         <UiCard className="control-header">
           <UiCardHeader>
             <UiCardTitle>
-              <UiButton variant="ghost" size="sm" onClick={() => nav("/admin")}>
-                Zur Übersicht
-              </UiButton>
-              <span>{data.event.name}</span>
+              <small className="control-event-name">{data.event.name}</small>
+              <span
+                className={cn(
+                  "control-round-title",
+                  round?.state === "completed" && "is-completed",
+                )}
+              >
+                {round?.state === "completed" && (
+                  <CheckCircle aria-hidden="true" weight="fill" />
+                )}
+                <span>
+                  {round
+                    ? `Runde ${round.round_number}${
+                        round.state === "completed" ? " abgeschlossen" : ""
+                      }`
+                    : "Vorbereitung"}
+                </span>
+              </span>
             </UiCardTitle>
-            <UiCardDescription>
-              {round ? `Runde ${round.round_number}` : "Lobby geöffnet"}
-              {" · "}
-              {participantCount} Teilnehmer · {activeCourts} aktive Plätze ·{" "}
-              {duration} Minuten
-            </UiCardDescription>
+            <UiCardDescription>{participantCount} Teilnehmer</UiCardDescription>
             <UiCardAction>
               <div className="control-header-actions">
-                <UiBadge variant={lobbyOpen ? "outline" : "secondary"}>
-                  {lobbyOpen
-                    ? "Vorbereitung"
-                    : round?.state === "results"
-                      ? "Ergebnisse"
-                      : round?.state === "published"
-                        ? "Bereit"
-                        : round?.state === "paused"
-                          ? "Pausiert"
-                          : "Läuft"}
-                </UiBadge>
-                <details className="event-menu">
-                  <summary aria-label="Veranstaltungsaktionen öffnen">
-                    <DotsThreeVertical />
-                  </summary>
-                  <div className="event-menu-content">
+                {round?.state !== "completed" && (
+                  <UiBadge variant={!round ? "outline" : "secondary"}>
+                    {!round
+                      ? "Vorbereitung"
+                      : round.state === "results"
+                        ? "Ergebnisse"
+                        : round.state === "published"
+                          ? "Bereit"
+                          : round.state === "paused"
+                            ? "Pausiert"
+                            : "Läuft"}
+                  </UiBadge>
+                )}
+                <QR
+                  url={`${window.location.origin}/event/${data.event.public_slug}`}
+                />
+                <UiDropdownMenu>
+                  <UiDropdownMenuTrigger asChild>
                     <UiButton
+                      className="event-actions-trigger"
                       variant="ghost"
-                      onClick={() =>
-                        mutate(
-                          `/admin/events/${id}`,
-                          {
-                            method: "PATCH",
-                            body: JSON.stringify({ status: "archived" }),
-                          },
-                          "Veranstaltung archiviert.",
-                        )
-                      }
+                      size="icon-lg"
+                      aria-label="Veranstaltungsaktionen öffnen"
                     >
-                      <Archive data-icon="inline-start" /> Archivieren
+                      <DotsThreeVertical />
                     </UiButton>
-                    <DeleteEventDialog
-                      event={data.event}
-                      onDeleted={() => nav("/admin")}
-                    />
-                  </div>
-                </details>
+                  </UiDropdownMenuTrigger>
+                  <UiDropdownMenuContent align="end" className="min-w-52">
+                    <UiDropdownMenuGroup>
+                      <UiDropdownMenuItem onSelect={() => nav("/admin")}>
+                        <ArrowLeft /> Zur Übersicht
+                      </UiDropdownMenuItem>
+                    </UiDropdownMenuGroup>
+                    <UiDropdownMenuSeparator />
+                    <UiDropdownMenuGroup>
+                      <UiDropdownMenuItem
+                        onSelect={() => setSettingsOpen(true)}
+                      >
+                        <GearSix /> Einstellungen
+                      </UiDropdownMenuItem>
+                      <UiDropdownMenuItem
+                        onSelect={() => {
+                          void mutate(
+                            `/admin/events/${id}`,
+                            {
+                              method: "PATCH",
+                              body: JSON.stringify({ status: "archived" }),
+                            },
+                          ).catch(() => {});
+                        }}
+                      >
+                        <Archive /> Archivieren
+                      </UiDropdownMenuItem>
+                      <DeleteEventDialog
+                        event={data.event}
+                        onDeleted={() => nav("/admin")}
+                      />
+                    </UiDropdownMenuGroup>
+                    <UiDropdownMenuSeparator />
+                    <UiDropdownMenuGroup>
+                      <LogoutMenuItem logout={logout} />
+                    </UiDropdownMenuGroup>
+                  </UiDropdownMenuContent>
+                </UiDropdownMenu>
               </div>
             </UiCardAction>
           </UiCardHeader>
-          <UiCardFooter>
-            <QR
-              url={`${window.location.origin}/event/${data.event.public_slug}`}
-            />
-            {activeTab === "dashboard" &&
-              round &&
-              round.state !== "completed" && (
+          {activeTab === "dashboard" &&
+            round &&
+            ["running", "paused"].includes(round.state) && (
+              <UiCardFooter>
                 <Clock round={round} mutate={mutate} />
-              )}
-          </UiCardFooter>
+              </UiCardFooter>
+            )}
         </UiCard>
+        <EventSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          duration={duration}
+          save={(durationMinutes) =>
+            mutate(
+              `/admin/events/${id}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify({ durationMinutes }),
+              },
+            )
+          }
+        />
         <nav className="event-tabs" aria-label="Veranstaltungsbereiche">
           <NavLink to={`/admin/events/${id}/dashboard`}>Dashboard</NavLink>
           <NavLink to={`/admin/events/${id}/teilnehmer`}>Teilnehmer</NavLink>
@@ -1598,13 +1861,6 @@ function EventAdmin() {
             <UiAlertDescription>{error}</UiAlertDescription>
           </UiAlert>
         )}
-        {note && (
-          <UiAlert className="control-success">
-            <Check />
-            <UiAlertTitle>Erledigt</UiAlertTitle>
-            <UiAlertDescription>{note}</UiAlertDescription>
-          </UiAlert>
-        )}
         <div
           className={cn(
             "control-desk",
@@ -1613,24 +1869,34 @@ function EventAdmin() {
         >
           {activeTab === "dashboard" && (
             <UiCard
-              className={cn("control-stage", lobbyOpen && "is-draw-stage")}
+              className={cn(
+                "control-stage",
+                lobbyOpen && "is-draw-stage",
+                round?.state === "completed" && "is-recap-stage",
+              )}
             >
               <UiCardHeader>
-                <UiCardTitle>
-                  {!round || round.state === "completed"
+                <UiCardTitle role="heading" aria-level={2}>
+                  {!round
                     ? "Nächste Runde auslosen"
-                    : round.state === "results"
-                      ? "Ergebnisse eintragen"
-                      : round.state === "published"
-                        ? "Doppel veröffentlicht"
-                        : "Runde läuft"}
+                    : round.state === "completed"
+                      ? "Aktualisierte Bestenliste"
+                      : resultEntryOpen
+                        ? "Ergebnisse erfassen"
+                        : round.state === "published"
+                          ? "Doppel veröffentlicht"
+                          : "Runde vorbereiten"}
                 </UiCardTitle>
                 <UiCardDescription>
-                  {round && round.state !== "completed"
-                    ? "Die aktuelle Runde ist für die Teilnehmer sichtbar."
-                    : "Wer spielt als Nächstes zusammen?"}
+                  {!round
+                    ? "Wer spielt als Nächstes zusammen?"
+                    : round.state === "completed"
+                      ? `Runde ${round.round_number} ist abgeschlossen.`
+                      : resultEntryOpen
+                        ? "Ergebnisse können eingetragen werden, sobald ein Platz fertig ist."
+                        : "Die aktuelle Runde ist für die Teilnehmer sichtbar."}
                 </UiCardDescription>
-                {round?.state === "results" && (
+                {round && resultEntryOpen && (
                   <UiCardAction>
                     <UiBadge variant="outline">
                       {completedResults}/{round.matches.length} erfasst
@@ -1639,51 +1905,10 @@ function EventAdmin() {
                 )}
               </UiCardHeader>
               <UiCardContent>
-                {(!round || round.state === "completed") && (
-                  <UiFieldGroup className="control-settings">
-                    <UiField orientation="horizontal">
-                      <UiFieldLabel htmlFor="round-duration">
-                        Rundendauer
-                      </UiFieldLabel>
-                      <div className="duration-stepper">
-                        <UiButton
-                          type="button"
-                          size="icon-lg"
-                          variant="outline"
-                          aria-label="Rundendauer um 5 Minuten verringern"
-                          disabled={duration <= 1}
-                          onClick={() =>
-                            setDuration((current) => Math.max(1, current - 5))
-                          }
-                        >
-                          <Minus />
-                        </UiButton>
-                        <UiInput
-                          id="round-duration"
-                          className="duration-stepper-input"
-                          type="number"
-                          inputMode="numeric"
-                          min="1"
-                          max="240"
-                          value={duration}
-                          aria-label="Rundendauer in Minuten"
-                          onChange={(e) => setDuration(+e.target.value)}
-                        />
-                        <UiButton
-                          type="button"
-                          size="icon-lg"
-                          variant="outline"
-                          aria-label="Rundendauer um 5 Minuten erhöhen"
-                          disabled={duration >= 240}
-                          onClick={() =>
-                            setDuration((current) => Math.min(240, current + 5))
-                          }
-                        >
-                          <Plus />
-                        </UiButton>
-                      </div>
-                    </UiField>
-                  </UiFieldGroup>
+                {round?.state === "completed" && (
+                  <div className="round-recap-leaderboard">
+                    <Leaderboard players={rankedPlayers} />
+                  </div>
                 )}
                 {round?.state === "published" && (
                   <div className="control-actions">
@@ -1697,7 +1922,6 @@ function EventAdmin() {
                             method: "POST",
                             body: JSON.stringify({ action: "start" }),
                           },
-                          "Runde gestartet.",
                         )
                       }
                     >
@@ -1710,13 +1934,7 @@ function EventAdmin() {
                       variant="ghost"
                       onClick={generate}
                     >
-                      <img
-                        className="raffle-box-inline-icon"
-                        src={raffleBox}
-                        alt=""
-                        aria-hidden="true"
-                        data-icon="inline-start"
-                      />
+                      <Shuffle data-icon="inline-start" />
                       Neu auslosen
                     </UiButton>
                   </div>
@@ -1742,7 +1960,7 @@ function EventAdmin() {
                           key={m.id}
                           m={m}
                           players={pm}
-                          result={round.state === "results"}
+                          result={resultEntryOpen}
                           onStatusChange={updateMatchEntryStatus}
                           save={(a, b) =>
                             mutate(`/admin/matches/${m.id}/result`, {
@@ -1759,7 +1977,14 @@ function EventAdmin() {
                   </>
                 )}
               </UiCardContent>
-              <UiCardFooter className="control-stage-footer">
+              <UiCardFooter
+                className={cn(
+                  "control-stage-footer",
+                  (round?.state === "completed" || resultEntryOpen) &&
+                    "floating-stage-footer",
+                  resultEntryOpen && "results-progress-footer",
+                )}
+              >
                 {(!round || round.state === "completed") && (
                   <UiButton
                     className="draw-action"
@@ -1767,29 +1992,53 @@ function EventAdmin() {
                     disabled={activePlayers < 4 || activeCourts === 0}
                     onClick={generate}
                   >
-                    <span className="draw-action-icon" aria-hidden="true">
-                      <img className="raffle-box-icon" src={raffleBox} alt="" />
+                    <Shuffle data-icon="inline-start" />
+                    <span className="draw-action-label">
+                      {round?.state === "completed"
+                        ? "Nächste Runde auslosen"
+                        : "Doppel auslosen"}
                     </span>
-                    <span className="draw-action-label">Doppel auslosen</span>
                   </UiButton>
                 )}
-                {round?.state === "results" && (
-                  <UiButton
-                    size="lg"
-                    disabled={!roundCanComplete}
-                    onClick={() => {
-                      void mutate(
-                        `/admin/rounds/${round.id}/complete`,
-                        {
-                          method: "POST",
-                          body: JSON.stringify({ allowMissing: false }),
-                        },
-                        "Runde abgeschlossen.",
-                      ).catch(() => {});
-                    }}
-                  >
-                    Runde abschließen
-                  </UiButton>
+                {round && resultEntryOpen && (
+                  <>
+                    <div className="result-progress" aria-live="polite">
+                      <div>
+                        <strong>
+                          {completedResults} von {round.matches.length}{" "}
+                          Ergebnissen erfasst
+                        </strong>
+                        <span>
+                          {roundCanComplete
+                            ? "Alle Ergebnisse sind gespeichert."
+                            : "Alle Plätze vollständig eintragen."}
+                        </span>
+                      </div>
+                      <UiProgress
+                        value={
+                          round.matches.length
+                            ? (completedResults / round.matches.length) * 100
+                            : 0
+                        }
+                        aria-label={`${completedResults} von ${round.matches.length} Ergebnissen erfasst`}
+                      />
+                    </div>
+                    <UiButton
+                      size="lg"
+                      disabled={!roundCanComplete}
+                      onClick={() => {
+                        void mutate(
+                          `/admin/rounds/${round.id}/complete`,
+                          {
+                            method: "POST",
+                            body: JSON.stringify({ allowMissing: false }),
+                          },
+                        ).catch(() => {});
+                      }}
+                    >
+                      <Check data-icon="inline-start" /> Runde abschließen
+                    </UiButton>
+                  </>
                 )}
               </UiCardFooter>
             </UiCard>
@@ -1810,51 +2059,78 @@ function EventAdmin() {
                   <UiCardDescription>
                     {activePlayers} aktiv von {participantCount}
                   </UiCardDescription>
-                  <UiCardAction>
-                    <Users />
-                  </UiCardAction>
+                  {!configurationLocked && (
+                    <UiCardAction>
+                      <UiButton
+                        className="participant-add-trigger"
+                        type="button"
+                        variant={participantAddOpen ? "secondary" : "default"}
+                        aria-expanded={participantAddOpen}
+                        aria-controls="participant-add-form"
+                        onClick={() => setParticipantAddOpen((open) => !open)}
+                      >
+                        {participantAddOpen ? (
+                          <>
+                            <X data-icon="inline-start" /> Schließen
+                          </>
+                        ) : (
+                          <>
+                            <Plus data-icon="inline-start" /> Hinzufügen
+                          </>
+                        )}
+                      </UiButton>
+                    </UiCardAction>
+                  )}
                 </UiCardHeader>
                 <UiCardContent>
                   {configurationLocked && (
-                    <UiAlert className="configuration-lock">
+                    <UiAlert className="configuration-lock" role="status">
                       <LockKey />
-                      <UiAlertTitle>Spielerverwaltung gesperrt</UiAlertTitle>
+                      <UiAlertTitle>Teilnehmer im Lesemodus</UiAlertTitle>
                       <UiAlertDescription>
-                        Während der offenen Runde können Teilnehmer und ihre
-                        Spielhistorie angesehen werden. Änderungen sind nach dem
-                        Rundenabschluss wieder möglich.
+                        Namen und Spielhistorie bleiben einsehbar. Änderungen
+                        sind nach dem Rundenabschluss wieder möglich.
                       </UiAlertDescription>
                     </UiAlert>
                   )}
-                  {!configurationLocked && (
-                    <form onSubmit={add}>
-                      <UiFieldGroup>
-                        <UiField>
-                          <UiFieldLabel
-                            className="sr-only"
-                            htmlFor="participant-name"
-                          >
-                            Vorname oder Spitzname
-                          </UiFieldLabel>
-                          <UiInputGroup>
-                            <UiInputGroupInput
-                              id="participant-name"
-                              name="name"
-                              placeholder="Vorname oder Spitzname"
-                              required
-                            />
-                            <UiInputGroupAddon align="inline-end">
-                              <UiInputGroupButton
-                                type="submit"
-                                size="icon-xs"
-                                aria-label="Teilnehmer hinzufügen"
-                              >
-                                <Plus />
-                              </UiInputGroupButton>
-                            </UiInputGroupAddon>
-                          </UiInputGroup>
-                        </UiField>
-                      </UiFieldGroup>
+                  {!configurationLocked && participantAddOpen && (
+                    <form
+                      id="participant-add-form"
+                      className="participant-add-form"
+                      onSubmit={add}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setParticipantAddOpen(false);
+                        }
+                      }}
+                    >
+                      <UiField>
+                        <UiFieldLabel
+                          className="sr-only"
+                          htmlFor="participant-name"
+                        >
+                          Vorname oder Spitzname
+                        </UiFieldLabel>
+                        <UiInput
+                          ref={participantNameRef}
+                          id="participant-name"
+                          name="name"
+                          maxLength={40}
+                          placeholder="Vorname oder Spitzname"
+                          required
+                        />
+                      </UiField>
+                      <div className="participant-add-actions">
+                        <UiButton
+                          type="button"
+                          variant="outline"
+                          onClick={() => setParticipantAddOpen(false)}
+                        >
+                          Abbrechen
+                        </UiButton>
+                        <UiButton type="submit">Hinzufügen</UiButton>
+                      </div>
                     </form>
                   )}
                   <div
@@ -1876,53 +2152,75 @@ function EventAdmin() {
                               } bei der nächsten Runde aus.`}
                     </span>
                   </div>
-                  <UiScrollArea className="participant-scroll">
-                    <div className="players control-players">
-                      {rankedPlayers.map((p) => (
-                        <div
-                          key={p.id}
-                          className={
-                            !p.active ? "player-row off" : "player-row"
-                          }
-                        >
-                          <button
-                            type="button"
-                            className="player-open"
-                            onClick={() => setCorrectionPlayerId(p.id)}
-                            aria-label={`${p.display_name} bearbeiten`}
-                          >
-                            <i>{p.emoji}</i>
-                            <span>
-                              <strong>{p.display_name}</strong>
-                            </span>
-                          </button>
-                          <UiSwitch
-                            aria-label={`${p.display_name} aktiv`}
-                            checked={!!p.active}
-                            disabled={configurationLocked}
-                            onCheckedChange={(active) =>
-                              mutate(`/admin/players/${p.id}`, {
-                                method: "PATCH",
-                                body: JSON.stringify({ active }),
-                              }).catch(() => {})
+                  {rankedPlayers.length ? (
+                    <UiScrollArea className="participant-scroll">
+                      <div className="players control-players">
+                        {rankedPlayers.map((p) => (
+                          <div
+                            key={p.id}
+                            className={
+                              !p.active ? "player-row off" : "player-row"
                             }
-                          />
-                        </div>
-                      ))}
-                      {Array.from({
-                        length: Math.max(
-                          0,
-                          visibleLobbySlots - rankedPlayers.length,
-                        ),
-                      }).map((_, i) => (
-                        <div key={`empty-${i}`} className="slot-empty">
-                          <i>+</i>
-                          <span>Leer</span>
-                          <small>Wartet auf Teilnehmer</small>
-                        </div>
-                      ))}
-                    </div>
-                  </UiScrollArea>
+                          >
+                            <button
+                              type="button"
+                              className="player-open"
+                              onClick={() => setCorrectionPlayerId(p.id)}
+                              aria-label={
+                                configurationLocked
+                                  ? `Spielhistorie von ${p.display_name} anzeigen`
+                                  : `${p.display_name} bearbeiten`
+                              }
+                            >
+                              <i>{p.emoji}</i>
+                              <span>
+                                <strong>{p.display_name}</strong>
+                              </span>
+                              {configurationLocked && (
+                                <small className="player-read-status">
+                                  {p.active ? "Aktiv" : "Pausiert"}
+                                </small>
+                              )}
+                            </button>
+                            {!configurationLocked && (
+                              <UiButton
+                                type="button"
+                                size="sm"
+                                variant={p.active ? "secondary" : "outline"}
+                                className={cn(
+                                  "player-status-button",
+                                  p.active && "is-active",
+                                )}
+                                aria-pressed={Boolean(p.active)}
+                                aria-label={`${p.display_name} ${
+                                  p.active ? "pausieren" : "aktivieren"
+                                }`}
+                                onClick={() =>
+                                  mutate(`/admin/players/${p.id}`, {
+                                    method: "PATCH",
+                                    body: JSON.stringify({ active: !p.active }),
+                                  }).catch(() => {})
+                                }
+                              >
+                                {p.active ? (
+                                  <Check aria-hidden="true" />
+                                ) : (
+                                  <Pause aria-hidden="true" weight="fill" />
+                                )}
+                                {p.active ? "Aktiv" : "Pausiert"}
+                              </UiButton>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </UiScrollArea>
+                  ) : (
+                    <p className="participant-empty">
+                      {configurationLocked
+                        ? "Noch keine Teilnehmer eingetragen."
+                        : "Noch keine Teilnehmer. Über „+ Hinzufügen“ geht es los."}
+                    </p>
+                  )}
                 </UiCardContent>
                 <UiDialog
                   open={Boolean(correctionPlayer)}
@@ -1932,7 +2230,11 @@ function EventAdmin() {
                 >
                   <UiDialogContent className="correction-dialog sm:max-w-3xl">
                     <UiDialogHeader>
-                      <UiDialogTitle>Teilnehmer bearbeiten</UiDialogTitle>
+                      <UiDialogTitle>
+                        {configurationLocked
+                          ? "Teilnehmerdetails"
+                          : "Teilnehmer bearbeiten"}
+                      </UiDialogTitle>
                     </UiDialogHeader>
                     {correctionPlayer && (
                       <>
@@ -1947,7 +2249,6 @@ function EventAdmin() {
                                 method: "PATCH",
                                 body: JSON.stringify({ name }),
                               },
-                              "Name geändert.",
                             )
                           }
                         />
@@ -1976,7 +2277,6 @@ function EventAdmin() {
                                         teamBGames: b,
                                       }),
                                     },
-                                    "Spielstand korrigiert.",
                                   )
                                 }
                               />
@@ -2054,12 +2354,12 @@ function PublicEvent() {
     void load();
   }, [slug]);
   useEffect(() => {
-    if (!data || data.rounds.length > 0) return;
+    if (!data) return;
     const timer = window.setInterval(() => {
       void load(true);
     }, 10_000);
     return () => window.clearInterval(timer);
-  }, [slug, data?.rounds.length]);
+  }, [slug, Boolean(data)]);
   useEffect(() => {
     if (!selected) return;
     detailRef.current?.scrollIntoView({
@@ -2152,35 +2452,42 @@ function PublicEvent() {
       opps = (a ? ids.slice(2) : ids.slice(0, 2)).map(p);
     detail = (
       <article className="assignment public-court-card">
-        <header className="public-court-header">
-          <div>
-            <span>Du spielst auf</span>
-            <strong>{courtName(match)}</strong>
+        <header className="public-assignment-summary">
+          <div className="public-assignment-court">
+            <div className="public-assignment-court-copy">
+              <span>Du spielst auf</span>
+              <strong>{courtName(match)}</strong>
+            </div>
+            <div className="public-assignment-court-meta">
+              <span
+                className="public-assignment-round-badge"
+                aria-label={`Runde ${currentRound?.round_number ?? "–"}`}
+              >
+                <small aria-hidden="true">Runde</small>
+                <b aria-hidden="true">
+                  {currentRound?.round_number ?? "–"}
+                </b>
+              </span>
+              <TennisBall aria-hidden="true" />
+            </div>
           </div>
-          <TennisBall aria-hidden="true" />
         </header>
         <div
           className="public-court-board"
           aria-label={`${courtName(match)}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
         >
-          <div className="public-court-lines" aria-hidden="true">
-            <span className="court-line court-line-service-top" />
-            <span className="court-line court-line-service-bottom" />
-            <span className="court-line court-line-service-center" />
-            <span className="court-line court-line-net" />
-          </div>
           <section className="public-court-team public-court-team-own">
             <span className="public-court-team-label">Dein Team</span>
             <div className="public-court-players">
+              <div className="public-court-player is-partner">
+                <i>{partner.emoji}</i>
+                <strong>{partner.display_name}</strong>
+                <small>Partner</small>
+              </div>
               <div className="public-court-player is-you">
                 <i>{p(selected).emoji}</i>
                 <strong>{p(selected).display_name}</strong>
                 <small>Du</small>
-              </div>
-              <div className="public-court-player">
-                <i>{partner.emoji}</i>
-                <strong>{partner.display_name}</strong>
-                <small>Partner</small>
               </div>
             </div>
           </section>
@@ -2206,9 +2513,12 @@ function PublicEvent() {
     <Shell>
       <div className="public-screen">
         <div className="public-refresh-dock">
-          <Button
+          <span className="public-refresh-status">
+            <i aria-hidden="true" /> Auto-Update aktiv
+          </span>
+          <UiButton
             className={cn("public-refresh", refreshing && "is-refreshing")}
-            variant="soft"
+            variant="secondary"
             disabled={refreshing}
             aria-busy={refreshing}
             onClick={() => void refresh()}
@@ -2217,8 +2527,13 @@ function PublicEvent() {
               className="public-refresh-icon"
               aria-hidden="true"
             />
-            <span>{refreshing ? "Aktualisiere…" : "Aktualisieren"}</span>
-          </Button>
+            <span className="public-refresh-label-desktop">
+              {refreshing ? "Aktualisiere…" : "Aktualisieren"}
+            </span>
+            <span className="public-refresh-label-mobile">
+              {refreshing ? "Aktualisiere…" : "Jetzt aktualisieren"}
+            </span>
+          </UiButton>
         </div>
         <div className="heading public-hero">
           <div>
@@ -2338,7 +2653,10 @@ export default function App() {
             <Shell logout={logout}>
               <Routes>
                 <Route index element={<Dashboard />} />
-                <Route path="events/:id/*" element={<EventAdmin />} />
+                <Route
+                  path="events/:id/*"
+                  element={<EventAdmin logout={logout} />}
+                />
               </Routes>
             </Shell>
           ) : (
