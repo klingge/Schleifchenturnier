@@ -45,6 +45,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import QRCode from "qrcode";
+import courtPreview from "./assets/court-preview.png";
 import hairBow from "./assets/hair-bow.png";
 import sgaLogo from "./assets/sga-logo.png";
 import {
@@ -105,6 +106,7 @@ import { TooltipProvider as UiTooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   canCompleteRoundWithEntries,
+  compareCourtsByName,
   countCompletedResults,
   getInitialSetupTab,
   getRoundSecondsLeft,
@@ -1441,6 +1443,19 @@ function InitialSetupGuide({
   );
 }
 
+function CourtPreview() {
+  return (
+    <img
+      className="court-preview-image"
+      src={courtPreview}
+      alt=""
+      width="384"
+      height="512"
+      aria-hidden="true"
+    />
+  );
+}
+
 function CourtManager({
   eventId,
   courts,
@@ -1458,12 +1473,16 @@ function CourtManager({
   setupReady?: boolean;
   onSetupContinue?: () => void;
 }) {
-  const [courtAddOpen, setCourtAddOpen] = useState(false);
   const [courtAdding, setCourtAdding] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editingName, setEditingName] = useState("");
   const editingCourt = courts.find((court) => court.id === editingId);
   const activeCount = courts.filter((court) => court.active).length;
+  const atCourtLimit = courts.length >= 13;
+  const sortedCourts = useMemo(
+    () => [...courts].sort(compareCourtsByName),
+    [courts],
+  );
 
   async function addCourt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1475,7 +1494,6 @@ function CourtManager({
         body: JSON.stringify({ name: new FormData(form).get("name") }),
       });
       form.reset();
-      setCourtAddOpen(false);
     } finally {
       setCourtAdding(false);
     }
@@ -1488,29 +1506,6 @@ function CourtManager({
         <UiCardDescription>
           {activeCount} aktiv von {courts.length}
         </UiCardDescription>
-        {editable && (
-          <UiCardAction>
-            <UiButton
-              className="court-add-trigger"
-              type="button"
-              variant={courtAddOpen ? "secondary" : "default"}
-              disabled={courts.length >= 13 && !courtAddOpen}
-              aria-expanded={courtAddOpen}
-              aria-controls="court-add-form"
-              onClick={() => setCourtAddOpen((open) => !open)}
-            >
-              {courtAddOpen ? (
-                <>
-                  <X data-icon="inline-start" /> Schließen
-                </>
-              ) : (
-                <>
-                  <Plus data-icon="inline-start" /> Hinzufügen
-                </>
-              )}
-            </UiButton>
-          </UiCardAction>
-        )}
       </UiCardHeader>
       <UiCardContent>
         {!editable && (
@@ -1523,18 +1518,8 @@ function CourtManager({
             </UiAlertDescription>
           </UiAlert>
         )}
-        {editable && courtAddOpen && (
-          <form
-            id="court-add-form"
-            className="court-add-form"
-            onSubmit={addCourt}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !courtAdding) {
-                event.preventDefault();
-                setCourtAddOpen(false);
-              }
-            }}
-          >
+        {editable && (
+          <form className="court-add-form" onSubmit={addCourt}>
             <UiField>
               <UiFieldLabel className="sr-only" htmlFor="court-name">
                 Platzname
@@ -1544,22 +1529,13 @@ function CourtManager({
                 name="name"
                 placeholder="z. B. Halle 1"
                 maxLength={40}
-                disabled={courtAdding}
+                disabled={courtAdding || atCourtLimit}
                 aria-busy={courtAdding}
-                autoFocus
                 required
               />
             </UiField>
             <div className="court-add-actions">
-              <UiButton
-                type="button"
-                variant="outline"
-                disabled={courtAdding}
-                onClick={() => setCourtAddOpen(false)}
-              >
-                Abbrechen
-              </UiButton>
-              <UiButton type="submit" disabled={courtAdding}>
+              <UiButton type="submit" disabled={courtAdding || atCourtLimit}>
                 {courtAdding ? "Wird hinzugefügt…" : "Hinzufügen"}
               </UiButton>
             </div>
@@ -1574,7 +1550,7 @@ function CourtManager({
           </span>
         </div>
         <div className="court-visual-grid">
-          {courts.map((court) => (
+          {sortedCourts.map((court) => (
             <div
               key={court.id}
               className={cn("court-visual-card", !court.active && "off")}
@@ -1589,22 +1565,15 @@ function CourtManager({
                     setEditingName(court.name);
                   }}
                 >
-                  <span
-                    className="court-board-preview court-board-surface"
-                    aria-hidden="true"
-                  />
+                  <CourtPreview />
                   <span className="court-card-label">
                     <strong>{court.name}</strong>
-                    <small>Umbenennen</small>
                   </span>
                   <PencilSimple aria-hidden="true" />
                 </button>
               ) : (
                 <div className="court-open">
-                  <span
-                    className="court-board-preview court-board-surface"
-                    aria-hidden="true"
-                  />
+                  <CourtPreview />
                   <span className="court-card-label">
                     <strong>{court.name}</strong>
                   </span>

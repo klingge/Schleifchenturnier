@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canCompleteRound,
   canCompleteRoundWithEntries,
+  compareCourtsByName,
   countCompletedResults,
   getInitialSetupTab,
   getRoundSecondsLeft,
@@ -9,6 +10,34 @@ import {
   isResultEntryRoundState,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
+
+describe("court management", () => {
+  it("sorts court names using German, case-insensitive natural ordering", () => {
+    const courts = [
+      { name: "Platz 10", position: 1 },
+      { name: "äußerer Platz", position: 2 },
+      { name: "Platz 2", position: 3 },
+      { name: "halle 1", position: 4 },
+      { name: "Halle 2", position: 5 },
+    ];
+
+    expect(
+      [...courts].sort(compareCourtsByName).map((court) => court.name),
+    ).toEqual(["äußerer Platz", "halle 1", "Halle 2", "Platz 2", "Platz 10"]);
+  });
+
+  it("uses the stored position to keep equal names deterministic", () => {
+    const courts = [
+      { name: "Platz A", position: 3 },
+      { name: "platz a", position: 1 },
+      { name: "PLATZ A", position: 2 },
+    ];
+
+    expect(
+      [...courts].sort(compareCourtsByName).map((court) => court.position),
+    ).toEqual([1, 2, 3]);
+  });
+});
 
 describe("initial tournament setup", () => {
   it("opens the earliest incomplete setup step", () => {

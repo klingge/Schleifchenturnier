@@ -21,6 +21,17 @@ export type TimerRoundState = {
 export type InitialSetupTab = "teilnehmer" | "plaetze" | "dashboard";
 
 const resultEntryRoundStates = new Set(["running", "paused", "results"]);
+const courtNameCollator = new Intl.Collator("de", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+export function compareCourtsByName(
+  a: { name: string; position: number },
+  b: { name: string; position: number },
+) {
+  return courtNameCollator.compare(a.name, b.name) || a.position - b.position;
+}
 
 export function getInitialSetupTab(
   activePlayerCount: number,
