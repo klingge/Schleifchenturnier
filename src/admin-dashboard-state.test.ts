@@ -3,6 +3,7 @@ import {
   canCompleteRound,
   canCompleteRoundWithEntries,
   compareCourtsByName,
+  comparePlayersByName,
   countCompletedResults,
   getInitialSetupTab,
   getRoundSecondsLeft,
@@ -10,6 +11,34 @@ import {
   isResultEntryRoundState,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
+
+describe("participant management", () => {
+  it("sorts participant names using German, case-insensitive natural ordering", () => {
+    const players = [
+      { id: "7", display_name: "Zoë" },
+      { id: "6", display_name: "Spieler 10" },
+      { id: "5", display_name: "annika" },
+      { id: "4", display_name: "Änne" },
+      { id: "3", display_name: "Spieler 2" },
+      { id: "2", display_name: "Ben" },
+      { id: "1", display_name: "Anna" },
+    ];
+
+    expect(
+      [...players]
+        .sort(comparePlayersByName)
+        .map((player) => player.display_name),
+    ).toEqual([
+      "Anna",
+      "Änne",
+      "annika",
+      "Ben",
+      "Spieler 2",
+      "Spieler 10",
+      "Zoë",
+    ]);
+  });
+});
 
 describe("court management", () => {
   it("sorts court names using German, case-insensitive natural ordering", () => {
