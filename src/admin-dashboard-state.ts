@@ -21,7 +21,7 @@ export type TimerRoundState = {
 export type InitialSetupTab = "teilnehmer" | "plaetze" | "dashboard";
 
 const resultEntryRoundStates = new Set(["running", "paused", "results"]);
-const courtNameCollator = new Intl.Collator("de", {
+const germanNameCollator = new Intl.Collator("de", {
   numeric: true,
   sensitivity: "base",
 });
@@ -30,7 +30,17 @@ export function compareCourtsByName(
   a: { name: string; position: number },
   b: { name: string; position: number },
 ) {
-  return courtNameCollator.compare(a.name, b.name) || a.position - b.position;
+  return germanNameCollator.compare(a.name, b.name) || a.position - b.position;
+}
+
+export function comparePlayersByName(
+  a: { id: string; display_name: string },
+  b: { id: string; display_name: string },
+) {
+  return (
+    germanNameCollator.compare(a.display_name, b.display_name) ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 export function getInitialSetupTab(

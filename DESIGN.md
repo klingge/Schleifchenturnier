@@ -4,7 +4,7 @@ Dieses Dokument ist die verbindliche visuelle Grundlage für das SGA-Sommerfest-
 
 ## Designrichtung
 
-Die Anwendung verbindet die klare, freundliche Informationsarchitektur von „Durchblick“ mit der kompakten Arbeitsweise eines Sport-Tools. Sie ist für helles Tageslicht, schnelle Bedienung auf dem Turniergelände sowie verständliche Nutzung durch Teilnehmerinnen und Teilnehmer ausgelegt.
+Die Anwendung verbindet die klare, freundliche Informationsarchitektur und die kompakte Arbeitsweise eines Sport-Tools. Sie ist für helles Tageslicht, schnelle Bedienung auf dem Turniergelände sowie verständliche Nutzung durch Teilnehmerinnen und Teilnehmer ausgelegt.
 
 - `DESIGN_VARIANCE 5`: eigenständige Vereinsidentität ohne dekorative Überladung
 - `MOTION_INTENSITY 4`: kurze, funktionale Rückmeldungen ohne Seiteninszenierung
