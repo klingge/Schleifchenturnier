@@ -1,20 +1,59 @@
-# SGA Sommerfest
+# SGA Schleifchenturnier
 
-German web application for running a timed tennis doubles tournament. The organizer controls registration, matchmaking, rounds, results, and event history. Participants use a public read-only link or QR code.
+Full-Stack-Webanwendung zur Organisation eines zeitgesteuerten Tennis-Doppelturniers. Die Turnierleitung verwaltet Anmeldung, Plätze, Runden, Matchmaking und Ergebnisse. Teilnehmende öffnen per QR-Code eine mobile Ansicht und sehen ihren Platz, Partner, Gegner sowie die aktuelle Bestenliste.
 
-## Local development
+**[Live-Demo öffnen](https://sga-schleifchenturnier-demo.sga-events.workers.dev/event/demo-sommerfest-2026)** · [Spieleransicht](design-screenshots/demo-player-assignment.png) · [Admin-Dashboard](design-screenshots/courts-desktop.png)
 
-Requirements: Node.js 20 or newer and npm.
+> Die Live-Demo verwendet ausschließlich künstliche Beispieldaten. Die öffentliche Teilnehmeransicht ist schreibgeschützt; der Adminbereich ist durch ein nicht veröffentlichtes Passwort geschützt.
+
+![Öffentliche Teilnehmeransicht mit Bestenliste](design-screenshots/demo-public-view.png)
+
+## Funktionen
+
+- Turniere mit Datum, Rundendauer und individuellen Plätzen anlegen
+- Teilnehmende registrieren, aktivieren und verwalten
+- faire Doppelbegegnungen mit reproduzierbarem, lexikografisch bewertetem Matchmaking erzeugen
+- Runden veröffentlichen, starten, pausieren und abschließen
+- Ergebnisse erfassen und eine Bestenliste aus Siegen und Spieldifferenz berechnen
+- mobile Teilnehmeransicht per öffentlichem Link oder QR-Code bereitstellen
+- Adminzugriff über signierte HTTP-only-Sitzungen und CSRF-Prüfung schützen
+
+## Architektur
+
+```mermaid
+flowchart LR
+    A[React-Client] -->|REST| B[Cloudflare Worker mit Hono]
+    B --> C[(Cloudflare D1 / SQLite)]
+    D[Turnierleitung] --> A
+    E[Teilnehmende per QR-Code] -->|Nur lesend| A
+```
+
+| Bereich | Umsetzung |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, Radix UI, responsive Teilnehmeransicht |
+| Backend | Cloudflare Workers, Hono, REST-Endpunkte, Zod-Validierung |
+| Daten | Cloudflare D1, SQL-Migrationen, vorbereitete Statements |
+| Sicherheit | signierte HTTP-only-Cookies, CSRF-Schutz, konstante Passwortprüfung |
+| Qualität | Vitest, TypeScript-Typecheck, reproduzierbarer Produktions-Build |
+
+## Mein Beitrag
+
+Das Projekt wurde von mir als privates Full-Stack-Projekt konzipiert und umgesetzt. Dazu gehörten Produktablauf, UI, API- und Datenmodell, Matchmaking-Logik, Tests sowie die Bereitstellung auf Cloudflare.
+
+## Lokale Entwicklung
+
+Voraussetzungen: Node.js 20 oder neuer und npm.
 
 ```powershell
 npm install
+Copy-Item .dev.vars.example .dev.vars
 npm run db:migrate:local
 npm run dev
 ```
 
-Open the URL printed by Vite. The checked-in local development password is `sommerfest-local`. It is only used by `.dev.vars`, which is ignored by Git.
+Vor dem Start müssen die Platzhalter in `.dev.vars` durch lokale Entwicklungswerte ersetzt werden. Diese Datei ist von Git ausgeschlossen.
 
-## Checks
+## Qualitätssicherung
 
 ```powershell
 npm run typecheck
@@ -22,45 +61,16 @@ npm test
 npm run build
 ```
 
-## Cloudflare deployment
+Der aktuelle Stand umfasst 39 automatisierte Tests für Matchmaking, Adminrichtlinien, Routen und UI-Zustände.
 
-1. Create a free Cloudflare account and authenticate Wrangler:
+## Demo-Umgebung
 
-   ```powershell
-   npx wrangler login
-   ```
+Die Demo läuft als eigener Worker mit separater D1-Datenbank und künstlichen Seed-Daten:
 
-2. Create the D1 database:
+```powershell
+npm run db:migrate:demo
+npm run db:seed:demo
+npm run deploy:demo
+```
 
-   ```powershell
-   npx wrangler d1 create sga-sommerfest
-   ```
-
-3. Copy the returned database ID into `wrangler.jsonc`, replacing `REPLACE_WITH_D1_DATABASE_ID`.
-
-4. Configure production secrets. Use a strong organizer password and a random session secret of at least 32 characters:
-
-   ```powershell
-   npx wrangler secret put ADMIN_PASSWORD
-   npx wrangler secret put SESSION_SECRET
-   ```
-
-5. Apply migrations and deploy:
-
-   ```powershell
-   npm run db:migrate:remote
-   npm run deploy
-   ```
-
-Cloudflare prints the public `workers.dev` address after deployment. No paid plan is required for the expected tournament usage.
-
-## Architecture
-
-- React 19 and Radix Themes client
-- Cloudflare Worker API with Hono
-- Cloudflare D1 database and SQL migrations
-- Signed HTTP-only organizer sessions with CSRF validation
-- Seeded, lexicographically scored doubles matcher
-- Vitest unit tests
-
-The confirmed product specification is in [`thoughts/shared/specs/2026-06-24-tennis-doubles-tournament.md`](thoughts/shared/specs/2026-06-24-tennis-doubles-tournament.md).
+Produktions- und Demo-Daten werden nicht gemeinsam verwendet. Secrets werden ausschließlich über Wrangler gesetzt und nicht im Repository gespeichert.
