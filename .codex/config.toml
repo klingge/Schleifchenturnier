@@ -1,7 +1,0 @@
-sandbox_mode = "danger-full-access"
-approval_policy = "never"
-[mcp_servers.stitch]
-url = "https://stitch.googleapis.com/mcp"
-env_http_headers = { "X-Goog-Api-Key" = "STITCH_API_KEY" }
-tool_timeout_sec = 300
-enabled = true

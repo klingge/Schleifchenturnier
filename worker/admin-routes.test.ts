@@ -74,6 +74,43 @@ const baseEnv = {
 };
 
 describe("admin configuration routes", () => {
+  it("rejects an altered session cookie", async () => {
+    const env: TestEnv = {
+      ...baseEnv,
+      DB: mockDb(() => null),
+    };
+    const auth = await authenticated(env);
+    const response = await app.request(
+      "/api/admin/events",
+      { headers: { cookie: `${auth.cookie}altered` } },
+      env,
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("requires a CSRF token for authenticated mutations", async () => {
+    const env: TestEnv = {
+      ...baseEnv,
+      DB: mockDb(() => null),
+    };
+    const auth = await authenticated(env);
+    const response = await app.request(
+      "/api/admin/events/event-1",
+      {
+        method: "PATCH",
+        headers: {
+          cookie: auth.cookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ durationMinutes: 20 }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(403);
+  });
+
   it("uses the persisted duration when generating without an override", () => {
     expect(resolveRoundDurationSeconds(undefined, 1200)).toBe(1200);
     expect(resolveRoundDurationSeconds(25, 1200)).toBe(1500);

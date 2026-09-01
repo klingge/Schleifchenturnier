@@ -1,45 +1,24 @@
 import { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
-import { isConfigurationLocked } from "./admin-policy";
-import { generateMatches, pairKey, type MatchHistory } from "./matchmaker";
+import { createAuthRoutes, requireAdmin, type WorkerVariables } from "./auth";
+import { base64Url } from "./crypto";
+import { generateMatches } from "./matchmaker";
+import {
+  buildHistory,
+  configurationIsLocked,
+  loadEvent,
+  loadPublicEvent,
+  roundLockedBody,
+  rows,
+  type DbRow,
+} from "./event-data";
 import { nextPlayerEmoji } from "./player-emojis";
 
-type Bindings = {
-  DB: D1Database;
-  ADMIN_PASSWORD: string;
-  SESSION_SECRET: string;
-};
-
-type Variables = { csrf: string };
-type DbRow = Record<string, unknown>;
-
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath(
+const app = new Hono<{ Bindings: Env; Variables: WorkerVariables }>().basePath(
   "/api",
 );
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
-const encoder = new TextEncoder();
-
-async function latestRoundState(db: D1Database, eventId: string) {
-  const round = await db
-    .prepare(
-      "SELECT state FROM rounds WHERE event_id = ? AND state <> 'discarded' ORDER BY round_number DESC LIMIT 1",
-    )
-    .bind(eventId)
-    .first<{ state: string }>();
-  return round?.state ?? null;
-}
-
-async function configurationIsLocked(db: D1Database, eventId: string) {
-  return isConfigurationLocked(await latestRoundState(db, eventId));
-}
-
-const roundLockedBody = {
-  error:
-    "Teilnehmer und Plätze können erst nach Abschluss der aktuellen Runde geändert werden.",
-  code: "round_locked",
-};
 
 const eventInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -74,267 +53,10 @@ export function resolveRoundDurationSeconds(
     : requestedMinutes * 60;
 }
 
-function base64Url(bytes: ArrayBuffer | Uint8Array) {
-  const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let binary = "";
-  for (const byte of array) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-}
+app.route("/auth", createAuthRoutes());
 
-async function hmac(value: string, secret: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return base64Url(
-    await crypto.subtle.sign("HMAC", key, encoder.encode(value)),
-  );
-}
-
-function constantTimeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1)
-    mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
-  return mismatch === 0;
-}
-
-async function createSession(secret: string) {
-  const payload = base64Url(
-    encoder.encode(
-      JSON.stringify({
-        exp: Date.now() + 12 * 60 * 60 * 1000,
-        csrf: crypto.randomUUID(),
-      }),
-    ),
-  );
-  return `${payload}.${await hmac(payload, secret)}`;
-}
-
-async function readSession(token: string | undefined, secret: string) {
-  if (!token) return null;
-  const [payload, signature] = token.split(".");
-  if (
-    !payload ||
-    !signature ||
-    !constantTimeEqual(signature, await hmac(payload, secret))
-  )
-    return null;
-  try {
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const data = JSON.parse(atob(normalized)) as { exp: number; csrf: string };
-    return data.exp > Date.now() ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-admin.use("*", async (c, next) => {
-  const session = await readSession(
-    getCookie(c, "sga_session"),
-    c.env.SESSION_SECRET,
-  );
-  if (!session) return c.json({ error: "Nicht angemeldet." }, 401);
-  if (
-    !["GET", "HEAD"].includes(c.req.method) &&
-    c.req.header("x-csrf-token") !== session.csrf
-  ) {
-    return c.json(
-      { error: "Die Sitzung konnte nicht bestätigt werden. Bitte neu laden." },
-      403,
-    );
-  }
-  c.set("csrf", session.csrf);
-  await next();
-});
-
-app.post("/auth/login", async (c) => {
-  const input = z
-    .object({ password: z.string().min(1).max(200) })
-    .safeParse(await c.req.json().catch(() => ({})));
-  if (
-    !input.success ||
-    !constantTimeEqual(input.data.password, c.env.ADMIN_PASSWORD)
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    return c.json({ error: "Das Passwort ist nicht korrekt." }, 401);
-  }
-  const token = await createSession(c.env.SESSION_SECRET);
-  setCookie(c, "sga_session", token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 43200,
-  });
-  const session = await readSession(token, c.env.SESSION_SECRET);
-  return c.json({ authenticated: true, csrf: session!.csrf });
-});
-
-app.post("/auth/logout", async (c) => {
-  deleteCookie(c, "sga_session", { path: "/" });
-  return c.json({ ok: true });
-});
-
-app.get("/auth/session", async (c) => {
-  const session = await readSession(
-    getCookie(c, "sga_session"),
-    c.env.SESSION_SECRET,
-  );
-  return c.json(
-    session
-      ? { authenticated: true, csrf: session.csrf }
-      : { authenticated: false },
-  );
-});
-
-async function rows<T extends DbRow>(statement: D1PreparedStatement) {
-  const result = await statement.all<T>();
-  return result.results;
-}
-
-async function loadEvent(db: D1Database, eventId: string, publicOnly = false) {
-  const event = await db
-    .prepare(
-      `SELECT * FROM events WHERE id = ? ${publicOnly ? "AND status = 'active'" : ""}`,
-    )
-    .bind(eventId)
-    .first<DbRow>();
-  if (!event) return null;
-  return assembleEvent(db, event);
-}
-
-async function loadPublicEvent(db: D1Database, slug: string) {
-  const event = await db
-    .prepare(
-      "SELECT * FROM events WHERE public_slug = ? AND status IN ('lobby', 'active')",
-    )
-    .bind(slug)
-    .first<DbRow>();
-  return event ? assembleEvent(db, event) : null;
-}
-
-async function assembleEvent(db: D1Database, event: DbRow) {
-  const eventId = String(event.id);
-  const players = await rows(
-    db
-      .prepare("SELECT * FROM players WHERE event_id = ? ORDER BY created_at")
-      .bind(eventId),
-  );
-  const courts = await rows(
-    db
-      .prepare("SELECT * FROM courts WHERE event_id = ? ORDER BY position")
-      .bind(eventId),
-  );
-  const rounds = await rows(
-    db
-      .prepare(
-        "SELECT * FROM rounds WHERE event_id = ? AND state <> 'discarded' ORDER BY round_number",
-      )
-      .bind(eventId),
-  );
-  const roundIds = rounds.map((round) => String(round.id));
-  let matches: DbRow[] = [];
-  let participation: DbRow[] = [];
-  if (roundIds.length) {
-    const placeholders = roundIds.map(() => "?").join(",");
-    matches = await rows(
-      db
-        .prepare(
-          `SELECT * FROM matches WHERE round_id IN (${placeholders}) ORDER BY court_number`,
-        )
-        .bind(...roundIds),
-    );
-    participation = await rows(
-      db
-        .prepare(
-          `SELECT * FROM round_participation WHERE round_id IN (${placeholders})`,
-        )
-        .bind(...roundIds),
-    );
-  }
-
-  const stats = new Map(
-    players.map((player) => [
-      String(player.id),
-      { wins: 0, gameDifference: 0, sitOuts: 0 },
-    ]),
-  );
-  for (const item of participation) {
-    if (item.status === "sitting_out")
-      stats.get(String(item.player_id))!.sitOuts += 1;
-  }
-  for (const match of matches) {
-    if (match.result_type !== "played") continue;
-    const aGames = Number(match.team_a_games);
-    const bGames = Number(match.team_b_games);
-    const teamA = [
-      String(match.team_a_player_1_id),
-      String(match.team_a_player_2_id),
-    ];
-    const teamB = [
-      String(match.team_b_player_1_id),
-      String(match.team_b_player_2_id),
-    ];
-    for (const playerId of teamA)
-      stats.get(playerId)!.gameDifference += aGames - bGames;
-    for (const playerId of teamB)
-      stats.get(playerId)!.gameDifference += bGames - aGames;
-    for (const playerId of aGames > bGames ? teamA : teamB)
-      stats.get(playerId)!.wins += 1;
-  }
-  const leaderboard: DbRow[] = players
-    .map<DbRow>((player) => ({
-      ...player,
-      ...stats.get(String(player.id))!,
-    }))
-    .sort(
-      (a, b) =>
-        Number(b.wins) - Number(a.wins) ||
-        Number(b.gameDifference) - Number(a.gameDifference) ||
-        String(a.display_name).localeCompare(String(b.display_name), "de"),
-    );
-  let previous:
-    { wins: number; gameDifference: number; rank: number } | undefined;
-  leaderboard.forEach((player, index) => {
-    const rank =
-      previous &&
-      previous.wins === player.wins &&
-      previous.gameDifference === player.gameDifference
-        ? previous.rank
-        : index + 1;
-    Object.assign(player, { rank });
-    previous = {
-      wins: Number(player.wins),
-      gameDifference: Number(player.gameDifference),
-      rank,
-    };
-  });
-  const hydratedRounds: DbRow[] = rounds.map((round) => ({
-    ...round,
-    matches: matches.filter((match) => match.round_id === round.id),
-    sitting_out_player_ids: participation
-      .filter(
-        (item) => item.round_id === round.id && item.status === "sitting_out",
-      )
-      .map((item) => String(item.player_id)),
-  }));
-  return {
-    event,
-    players,
-    courts,
-    leaderboard,
-    rounds: hydratedRounds,
-    currentRound: hydratedRounds.at(-1) ?? null,
-  };
-}
+const admin = new Hono<{ Bindings: Env; Variables: WorkerVariables }>();
+admin.use("*", requireAdmin);
 
 admin.get("/events", async (c) => {
   const events = await rows(
@@ -577,36 +299,6 @@ admin.delete("/courts/:id", async (c) => {
   );
 });
 
-async function buildHistory(data: Awaited<ReturnType<typeof loadEvent>>) {
-  const history: MatchHistory = { partners: new Map(), opponents: new Map() };
-  if (!data) return history;
-  for (const round of data.rounds) {
-    if (round.state !== "completed") continue;
-    for (const match of round.matches as DbRow[]) {
-      const teamA = [
-        String(match.team_a_player_1_id),
-        String(match.team_a_player_2_id),
-      ];
-      const teamB = [
-        String(match.team_b_player_1_id),
-        String(match.team_b_player_2_id),
-      ];
-      for (const team of [teamA, teamB])
-        history.partners.set(
-          pairKey(team[0], team[1]),
-          (history.partners.get(pairKey(team[0], team[1])) ?? 0) + 1,
-        );
-      for (const a of teamA)
-        for (const b of teamB)
-          history.opponents.set(
-            pairKey(a, b),
-            (history.opponents.get(pairKey(a, b)) ?? 0) + 1,
-          );
-    }
-  }
-  return history;
-}
-
 admin.post("/events/:id/generate", async (c) => {
   const input = generateInput.safeParse(await c.req.json().catch(() => ({})));
   if (!input.success)
@@ -825,15 +517,16 @@ admin.post("/rounds/:id/complete", async (c) => {
     return c.json({ error: "Ung\u00fcltige Abschlussanfrage." }, 400);
 
   const roundId = c.req.param("id");
-  const round = await c.env.DB.prepare(
-    "SELECT state FROM rounds WHERE id = ?",
-  )
+  const round = await c.env.DB.prepare("SELECT state FROM rounds WHERE id = ?")
     .bind(roundId)
     .first<{ state: string }>();
   if (!round) return c.json({ error: "Runde nicht gefunden." }, 404);
   if (!["running", "paused", "results"].includes(round.state))
     return c.json(
-      { error: "Diese Runde kann im aktuellen Status nicht abgeschlossen werden." },
+      {
+        error:
+          "Diese Runde kann im aktuellen Status nicht abgeschlossen werden.",
+      },
       409,
     );
 
@@ -869,7 +562,14 @@ app.get("/public/events/:slug", async (c) => {
 });
 
 app.onError((error, c) => {
-  console.error(error);
+  console.error(
+    JSON.stringify({
+      message: "Unhandled request error",
+      error: error.message,
+      method: c.req.method,
+      path: c.req.path,
+    }),
+  );
   return c.json({ error: "Ein unerwarteter Fehler ist aufgetreten." }, 500);
 });
 

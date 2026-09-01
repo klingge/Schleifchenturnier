@@ -7,3 +7,7 @@ dist/
 *.log
 *.tsbuildinfo
 .DS_Store
+AGENTS.md
+.codex/
+.impeccable/
+tmp/
