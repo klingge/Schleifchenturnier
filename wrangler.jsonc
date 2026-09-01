@@ -1,33 +1,18 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "sga-sommerfest",
-	"main": "./worker/index.ts",
-	"compatibility_date": "2026-08-13",
-	"assets": {
-		"not_found_handling": "single-page-application",
-		"run_worker_first": [
-			"/api/*"
-		]
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "sga-sommerfest",
-			"database_id": "9526e1cc-b3fb-4d0e-beb6-85de863df824",
-			"migrations_dir": "migrations"
-		}
-	],
-	"env": {
-		"demo": {
-			"name": "sga-schleifchenturnier-demo",
-			"d1_databases": [
-				{
-					"binding": "DB",
-					"database_name": "sga-schleifchenturnier-demo",
-					"database_id": "39fa4e2c-147f-4dfd-9b44-899ae6339192",
-					"migrations_dir": "migrations"
-				}
-			]
-		}
-	}
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sga-sommerfest",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-06-24",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sga-sommerfest",
+      "database_id": "9526e1cc-b3fb-4d0e-beb6-85de863df824",
+      "migrations_dir": "migrations",
+    },
+  ],
 }

@@ -9,7 +9,7 @@ export type MatchHistory = {
   opponents: Map<string, number>;
 };
 
-export type MatchAssignment = {
+type MatchAssignment = {
   court: number;
   teamA: [string, string];
   teamB: [string, string];

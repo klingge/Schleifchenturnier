@@ -1,76 +1,107 @@
 # SGA Schleifchenturnier
 
-Full-Stack-Webanwendung zur Organisation eines zeitgesteuerten Tennis-Doppelturniers. Die Turnierleitung verwaltet Anmeldung, Plätze, Runden, Matchmaking und Ergebnisse. Teilnehmende öffnen per QR-Code eine mobile Ansicht und sehen ihren Platz, Partner, Gegner sowie die aktuelle Bestenliste.
+Eine deutschsprachige Full-Stack-Anwendung zur Durchführung eines zeitgesteuerten Tennis-Doppelturniers. Die Turnierleitung verwaltet Teilnehmende und Plätze, veröffentlicht faire Paarungen, steuert Runden und erfasst Ergebnisse. Gäste öffnen eine speziell für Mobilgeräte gestaltete Leseansicht per Link oder QR-Code – ohne Konto und ohne App-Installation.
 
-**[Live-Demo öffnen](https://sga-schleifchenturnier-demo.sga-events.workers.dev/event/demo-sommerfest-2026)** · [Spieleransicht](design-screenshots/demo-player-assignment.png) · [Admin-Dashboard](design-screenshots/courts-desktop.png)
+> Portfolio-Repository: Der Quellcode ist öffentlich einsehbar, es gibt bewusst keine öffentliche Live-Demo und keine veröffentlichten Zugangsdaten.
 
-> Die Live-Demo verwendet ausschließlich künstliche Beispieldaten. Die öffentliche Teilnehmeransicht ist schreibgeschützt; der Adminbereich ist durch ein nicht veröffentlichtes Passwort geschützt.
+![Öffentliche Turnieransicht mit Platzzuweisung und Bestenliste](docs/assets/public-desktop.png)
 
-![Öffentliche Teilnehmeransicht mit Bestenliste](design-screenshots/demo-public-view.png)
+<p align="center">
+  <img src="docs/assets/public-mobile.png" alt="Mobile Teilnehmeransicht mit persönlicher Platzzuweisung" width="390">
+</p>
 
-## Funktionen
+## Was das Projekt zeigt
 
-- Turniere mit Datum, Rundendauer und individuellen Plätzen anlegen
-- Teilnehmende registrieren, aktivieren und verwalten
-- faire Doppelbegegnungen mit reproduzierbarem, lexikografisch bewertetem Matchmaking erzeugen
-- Runden veröffentlichen, starten, pausieren und abschließen
-- Ergebnisse erfassen und eine Bestenliste aus Siegen und Spieldifferenz berechnen
-- mobile Teilnehmeransicht per öffentlichem Link oder QR-Code bereitstellen
-- Adminzugriff über signierte HTTP-only-Sitzungen und CSRF-Prüfung schützen
+- komplette Turnierverwaltung von der Veranstaltung bis zur Ergebnis-Historie
+- deterministisches Matchmaking mit fairer Aussetzerverteilung und Wiederholungsvermeidung
+- responsive Teilnehmeransicht mit persönlicher Platz-, Partner- und Gegnerzuordnung
+- Worker-API mit validierten Nutzdaten, signierten Sitzungen und CSRF-Schutz
+- relationales D1-Datenmodell mit versionierten SQL-Migrationen und atomaren Schreibvorgängen
+- Unit-, Charakterisierungs- und Worker-Integrationstests gegen ein echtes migriertes D1-Schema
+- reproduzierbare Qualitätsprüfung und GitHub-Actions-Pipeline
+
+## Technischer Stack
+
+| Bereich      | Technologien                                                        | Aufgabe                                                            |
+| ------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| UI           | React 19, TypeScript, React Router                                  | komponentenbasierte Admin- und Teilnehmeroberfläche                |
+| Designsystem | Tailwind CSS 4, shadcn/ui, Radix UI, Phosphor Icons, Geist Variable | zugängliche Komponenten, Tokens und responsive Gestaltung          |
+| Build        | Vite 7, Cloudflare Vite Plugin                                      | lokaler Full-Stack-Server und optimierter Produktions-Build        |
+| API          | Cloudflare Workers, Hono, Zod                                       | Edge-Routing, Middleware und Eingabevalidierung                    |
+| Daten        | Cloudflare D1 / SQLite, SQL-Migrationen                             | Veranstaltungen, Plätze, Spieler, Runden und Matches               |
+| Sicherheit   | Web Crypto API, HttpOnly-Cookie, HMAC, CSRF-Token                   | geschützte Turnierleitung ohne clientseitig gespeichertes Passwort |
+| Qualität     | Vitest, Cloudflare Vitest Integration, ESLint, Prettier, TypeScript | Verhalten, Runtime-Integration und statische Qualität              |
+| Betrieb      | Wrangler, GitHub Actions                                            | Typgenerierung, Migration, Audit, Build und Deployment             |
 
 ## Architektur
 
 ```mermaid
 flowchart LR
-    A[React-Client] -->|REST| B[Cloudflare Worker mit Hono]
-    B --> C[(Cloudflare D1 / SQLite)]
-    D[Turnierleitung] --> A
-    E[Teilnehmende per QR-Code] -->|Nur lesend| A
+    A["React-Anwendung"] -->|"/api/admin/* + CSRF"| W["Hono im Cloudflare Worker"]
+    P["Öffentliche Teilnehmeransicht"] -->|"GET /api/public/*"| W
+    W --> V["Zod-Validierung und Auth-Middleware"]
+    V --> D[("Cloudflare D1")]
+    W --> M["Deterministisches Matchmaking"]
+    G["SQL-Migrationen"] --> D
+    C["GitHub Actions"] --> Q["Format · Lint · Typen · Tests · Audit · Build"]
 ```
 
-| Bereich | Umsetzung |
-| --- | --- |
-| Frontend | React 19, TypeScript, Vite, Radix UI, responsive Teilnehmeransicht |
-| Backend | Cloudflare Workers, Hono, REST-Endpunkte, Zod-Validierung |
-| Daten | Cloudflare D1, SQL-Migrationen, vorbereitete Statements |
-| Sicherheit | signierte HTTP-only-Cookies, CSRF-Schutz, konstante Passwortprüfung |
-| Qualität | Vitest, TypeScript-Typecheck, reproduzierbarer Produktions-Build |
+Der Worker liefert sowohl die API als auch die gebauten statischen Dateien aus. Dadurch teilen Frontend und Backend ein Deployment, während die öffentliche und die administrative HTTP-Schnittstelle klar getrennt bleiben. Details stehen in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 
-## Mein Beitrag
+## Schnellstart
 
-Das Projekt wurde von mir als privates Full-Stack-Projekt konzipiert und umgesetzt. Dazu gehörten Produktablauf, UI, API- und Datenmodell, Matchmaking-Logik, Tests sowie die Bereitstellung auf Cloudflare.
-
-## Lokale Entwicklung
-
-Voraussetzungen: Node.js 20 oder neuer und npm.
+Voraussetzungen: Node.js 22 oder neuer und npm.
 
 ```powershell
 npm install
 Copy-Item .dev.vars.example .dev.vars
 npm run db:migrate:local
+npm run db:seed:demo # optional, nur lokale erfundene Portfolio-Daten
 npm run dev
 ```
 
-Vor dem Start müssen die Platzhalter in `.dev.vars` durch lokale Entwicklungswerte ersetzt werden. Diese Datei ist von Git ausgeschlossen.
+Das lokale Passwort wird ausschließlich in der ignorierten Datei `.dev.vars` gesetzt. Die vom Entwicklungsserver ausgegebene URL öffnet die Anwendung; die Demo-Teilnehmeransicht liegt unter `/event/sommerfest-demo`.
 
-## Qualitätssicherung
+## Qualitätschecks
 
 ```powershell
+npm run format:check
+npm run lint
 npm run typecheck
 npm test
+npm run audit:production
 npm run build
 ```
 
-Der aktuelle Stand umfasst 39 automatisierte Tests für Matchmaking, Adminrichtlinien, Routen und UI-Zustände.
+`npm run check` führt Formatprüfung, Lint, Typprüfung, sämtliche Tests und den Build nacheinander aus. Die Worker-Integrationstests wenden die echten Migrationen auf eine isolierte D1-Instanz an.
 
-## Demo-Umgebung
+## Konfiguration und Deployment
 
-Die Demo läuft als eigener Worker mit separater D1-Datenbank und künstlichen Seed-Daten:
+Die Cloudflare-Ressourcen stehen in `wrangler.jsonc`; Geheimnisse gehören nicht ins Repository. Vor einem eigenen Deployment müssen eine D1-Datenbank angelegt, deren ID eingetragen und `ADMIN_PASSWORD` sowie `SESSION_SECRET` als Wrangler-Secrets gesetzt werden. Danach:
 
 ```powershell
-npm run db:migrate:demo
-npm run db:seed:demo
-npm run deploy:demo
+npm run db:migrate:remote
+npm run deploy
 ```
 
-Produktions- und Demo-Daten werden nicht gemeinsam verwendet. Secrets werden ausschließlich über Wrangler gesetzt und nicht im Repository gespeichert.
+Die genaue Entwicklungskette, CI, Deployment- und Rollback-Schritte beschreibt [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md).
+
+## Bewusste Produktgrenzen
+
+- ein vertrauenswürdiges Organisationsteam statt mehrerer Benutzerrollen
+- keine Selbstregistrierung, E-Mail-Zustellung oder Passwort-Wiederherstellung
+- öffentliche Ansicht ausschließlich lesend; Ergebnisse werden nur administrativ erfasst
+- keine Live-Demo, Telemetrie oder produktiven Daten im Portfolio-Repository
+- optimiert für ein zeitlich begrenztes Vereinsereignis, nicht als mandantenfähige Turnierplattform
+
+## Weitere Dokumente
+
+- [Technische Architektur](docs/ARCHITEKTUR.md)
+- [Entwicklung und Betrieb](docs/ENTWICKLUNG.md)
+- [Produktprinzipien](PRODUCT.md)
+- [Frontend-Designsystem](DESIGN.md)
+- [Rechtehinweis](RECHTE.md)
+
+## Rechte
+
+Es wird keine Open-Source-Lizenz erteilt. Der Code ist für Portfolio- und Bewerbungszwecke öffentlich einsehbar. Vereinslogo, Vereinsname sowie enthaltenes Marken- und Bildmaterial sind von einer Nutzungserlaubnis ausdrücklich ausgenommen. Maßgeblich ist [RECHTE.md](RECHTE.md).

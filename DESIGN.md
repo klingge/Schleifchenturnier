@@ -16,15 +16,15 @@ Die Anwendung verbindet die klare, freundliche Informationsarchitektur und die k
 
 ## Farben
 
-| Rolle | Token | Wert |
-| --- | --- | --- |
-| Seitenhintergrund | `--bg` | `oklch(97% 0.012 250)` |
-| Arbeitsfläche | `--surface` / `--surface-raised` | `oklch(99% 0.004 250)` |
-| Vereinsblau | `--primary` | `oklch(42% 0.15 255)` |
-| Dunkelblau | `--primary-strong` | `oklch(30% 0.12 255)` |
-| Hellblau | `--primary-soft` | `oklch(93% 0.04 250)` |
-| Primärtext | `--ink` | `oklch(20% 0.04 255)` |
-| Sekundärtext | `--muted` | `oklch(43% 0.04 250)` |
+| Rolle             | Token                            | Wert                   |
+| ----------------- | -------------------------------- | ---------------------- |
+| Seitenhintergrund | `--bg`                           | `oklch(97% 0.012 250)` |
+| Arbeitsfläche     | `--surface` / `--surface-raised` | `oklch(99% 0.004 250)` |
+| Vereinsblau       | `--primary`                      | `oklch(42% 0.15 255)`  |
+| Dunkelblau        | `--primary-strong`               | `oklch(30% 0.12 255)`  |
+| Hellblau          | `--primary-soft`                 | `oklch(93% 0.04 250)`  |
+| Primärtext        | `--ink`                          | `oklch(20% 0.04 255)`  |
+| Sekundärtext      | `--muted`                        | `oklch(43% 0.04 250)`  |
 
 Rot, Orange und Grün werden nur semantisch für Fehler, Warnungen und bestätigte Ergebnisse verwendet. Tennisplätze sind immer hellblau mit dunkelblauen Linien; Tennisgrün ist kein Bestandteil der visuellen Identität.
 

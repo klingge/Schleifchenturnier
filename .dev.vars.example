@@ -1,2 +1,2 @@
-ADMIN_PASSWORD=replace_me_for_local_development
-SESSION_SECRET=replace_me_with_at_least_32_random_characters
+ADMIN_PASSWORD=lokales-passwort-aendern
+SESSION_SECRET=lokales-session-geheimnis-mit-mindestens-32-zeichen

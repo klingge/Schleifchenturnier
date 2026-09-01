@@ -1,0 +1,48 @@
+name: Qualität
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Format, Tests und Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Format prüfen
+        run: npm run format:check
+
+      - name: Lint ausführen
+        run: npm run lint
+
+      - name: Typen prüfen
+        run: npm run typecheck
+
+      - name: Worker-Bindings prüfen
+        run: npm run types:worker:check
+
+      - name: Unit- und Worker-Tests ausführen
+        run: npm test
+
+      - name: Produktionsabhängigkeiten prüfen
+        run: npm run audit:production
+
+      - name: Produktions-Build erstellen
+        run: npm run build
