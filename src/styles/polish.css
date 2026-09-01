@@ -716,6 +716,11 @@ button.court-open:focus-visible strong {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 432px), 1fr));
 }
 
+.dashboard-matches .match {
+  width: 100%;
+  max-width: 680px;
+}
+
 .dashboard-matches .match-board {
   min-height: 148px;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
