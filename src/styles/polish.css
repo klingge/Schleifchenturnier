@@ -1744,7 +1744,11 @@ main:has(.login) {
 
 .control-players .player-row.off {
   opacity: 1;
-  background: var(--surface);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--surface) 0 8px,
+    color-mix(in oklch, var(--primary-soft) 38%, var(--surface)) 8px 16px
+  );
 }
 
 .control-players .player-row.off .player-open {
@@ -1799,18 +1803,24 @@ main:has(.login) {
   min-width: 104px;
   min-height: 44px;
   justify-self: end;
-  border-color: var(--line);
-  color: var(--muted);
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--primary-strong);
 }
 
 .player-status-button:hover {
   border-color: var(--line-strong);
+  background: var(--primary-soft);
 }
 
 .player-status-button.is-active {
-  border-color: var(--line-strong);
-  background: var(--primary-soft);
-  color: var(--primary-strong);
+  border-color: var(--success-line);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.player-status-button.is-active:hover {
+  background: color-mix(in oklch, var(--success-soft), var(--success) 6%);
 }
 
 .score-correction {
