@@ -107,6 +107,7 @@ import { cn } from "@/lib/utils";
 import {
   canCompleteRoundWithEntries,
   compareCourtsByName,
+  comparePlayersByName,
   countCompletedResults,
   getInitialSetupTab,
   getRoundSecondsLeft,
@@ -115,6 +116,11 @@ import {
   type MatchEntryStatus,
   shouldAutoSaveScore,
 } from "./admin-dashboard-state";
+import {
+  getBrowserPlayerStorage,
+  readPublicPlayerSelection,
+  writePublicPlayerSelection,
+} from "./public-player-selection";
 
 type Player = {
   id: string;
@@ -327,7 +333,7 @@ function Login({ done }: { done: () => void }) {
       <div className="login">
         <section>
           <UiBadge variant="secondary">Turnierleitung</UiBadge>
-          <h1>SGA Sommerfest</h1>
+          <h1>SGA Schleifchenturnier</h1>
           <p>
             Spieler eintragen, faire Doppel auslosen und Ergebnisse direkt
             festhalten.
@@ -1824,6 +1830,7 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
       activePlayers >= 4 && activeCourts > 0 && nextSitOutCount === 0,
     initialSetup = data.rounds.length === 0,
     initialSetupReady = activePlayers >= 4 && activeCourts > 0,
+    alphabeticalPlayers = [...data.players].sort(comparePlayersByName),
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
     resultEntryOpen = isResultEntryRoundState(round?.state),
@@ -1883,19 +1890,18 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
             <UiCardDescription>{participantCount} Teilnehmer</UiCardDescription>
             <UiCardAction>
               <div className="control-header-actions">
-                {round?.state !== "completed" && (
-                  <UiBadge variant={!round ? "outline" : "secondary"}>
-                    {!round
-                      ? "Vorbereitung"
-                      : round.state === "results"
-                        ? "Ergebnisse"
-                        : round.state === "published"
-                          ? "Bereit"
+                {round?.state !== "completed" &&
+                  round?.state !== "published" && (
+                    <UiBadge variant={!round ? "outline" : "secondary"}>
+                      {!round
+                        ? "Vorbereitung"
+                        : round.state === "results"
+                          ? "Ergebnisse"
                           : round.state === "paused"
                             ? "Pausiert"
                             : "Läuft"}
-                  </UiBadge>
-                )}
+                    </UiBadge>
+                  )}
                 <QR
                   url={`${window.location.origin}/event/${data.event.public_slug}`}
                 />
@@ -2285,10 +2291,10 @@ function EventAdmin({ logout }: { logout: LogoutHandler }) {
                                 } bei der nächsten Runde aus.`}
                     </span>
                   </div>
-                  {rankedPlayers.length ? (
+                  {alphabeticalPlayers.length ? (
                     <UiScrollArea className="participant-scroll">
                       <div className="players control-players">
-                        {rankedPlayers.map((p) => (
+                        {alphabeticalPlayers.map((p) => (
                           <div
                             key={p.id}
                             className={
@@ -2462,7 +2468,9 @@ function PublicEvent() {
   const { slug = "" } = useParams();
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState(""),
-    [selected, setSelected] = useState(""),
+    [selected, setSelected] = useState(() =>
+      readPublicPlayerSelection(getBrowserPlayerStorage(), slug),
+    ),
     [refreshing, setRefreshing] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
   const refreshingRef = useRef(false);
@@ -2493,12 +2501,27 @@ function PublicEvent() {
     void load();
   }, [slug]);
   useEffect(() => {
+    setSelected(readPublicPlayerSelection(getBrowserPlayerStorage(), slug));
+  }, [slug]);
+  useEffect(() => {
     if (!data) return;
     const timer = window.setInterval(() => {
       void load(true);
     }, 10_000);
     return () => window.clearInterval(timer);
   }, [slug, Boolean(data)]);
+  useEffect(() => {
+    if (
+      !data ||
+      data.event.public_slug !== slug ||
+      !selected ||
+      data.players.some((player) => player.id === selected)
+    )
+      return;
+
+    setSelected("");
+    writePublicPlayerSelection(getBrowserPlayerStorage(), slug, "");
+  }, [data, selected, slug]);
   useEffect(() => {
     if (!selected) return;
     detailRef.current?.scrollIntoView({
@@ -2537,6 +2560,10 @@ function PublicEvent() {
   const lobbyPlayers = data.players.filter((player) => player.active);
   const selectedPlayer = data.players.find((x) => x.id === selected);
   const p = (id: string) => data.players.find((x) => x.id === id)!;
+  const selectPlayer = (playerId: string) => {
+    setSelected(playerId);
+    writePublicPlayerSelection(getBrowserPlayerStorage(), slug, playerId);
+  };
   let detail = (
     <div className="public-state">
       <b>
@@ -2613,8 +2640,10 @@ function PublicEvent() {
           className="public-court-board"
           aria-label={`${courtName(match)}: ${p(selected).display_name} und ${partner.display_name} gegen ${opps[0].display_name} und ${opps[1].display_name}`}
         >
-          <section className="public-court-team public-court-team-own">
-            <span className="public-court-team-label">Dein Team</span>
+          <section
+            className="public-court-team public-court-team-own"
+            aria-label="Dein Team"
+          >
             <div className="public-court-players">
               <div className="public-court-player is-partner">
                 <i>{partner.emoji}</i>
@@ -2628,16 +2657,15 @@ function PublicEvent() {
               </div>
             </div>
           </section>
-          <div className="public-court-versus" aria-hidden="true">
-            <span>vs</span>
-          </div>
-          <section className="public-court-team public-court-team-opponents">
+          <section
+            className="public-court-team public-court-team-opponents"
+            aria-label="Gegner"
+          >
             <div className="public-court-players">
               {opps.map((opponent) => (
                 <div className="public-court-player" key={opponent.id}>
                   <i>{opponent.emoji}</i>
                   <strong>{opponent.display_name}</strong>
-                  <small>Gegner</small>
                 </div>
               ))}
             </div>
@@ -2672,19 +2700,6 @@ function PublicEvent() {
             </span>
           </UiButton>
         </div>
-        <div className="heading public-hero">
-          <div>
-            <p className="kicker">
-              {currentRound ? `Runde ${currentRound.round_number}` : "Lobby"}
-            </p>
-            <h1>{data.event.name}</h1>
-            <p>
-              {selectedPlayer
-                ? `${selectedPlayer.emoji} ${selectedPlayer.display_name}`
-                : "Namen antippen, Zuweisung sehen"}
-            </p>
-          </div>
-        </div>
         {initialLobby ? (
           <section className="public-lobby-roster" aria-live="polite">
             <header>
@@ -2696,10 +2711,6 @@ function PublicEvent() {
                     : `${lobbyPlayers.length} Teilnehmer sind dabei`}
                 </p>
               </div>
-              <span className="public-lobby-live">
-                <i aria-hidden="true" />
-                Aktualisiert automatisch
-              </span>
             </header>
             {lobbyPlayers.length ? (
               <div className="public-lobby-grid">
@@ -2709,14 +2720,18 @@ function PublicEvent() {
                     key={player.id}
                     className={selected === player.id ? "selected" : ""}
                     aria-pressed={selected === player.id}
-                    onClick={() => setSelected(player.id)}
+                    onClick={() => selectPlayer(player.id)}
                   >
                     <i>{player.emoji}</i>
-                    <strong>{player.display_name}</strong>
+                    <span className="public-lobby-player-copy">
+                      <strong>{player.display_name}</strong>
+                      {selected === player.id && <span>· Du</span>}
+                    </span>
                     {selected === player.id && (
-                      <span>
-                        <Check aria-hidden="true" /> Du
-                      </span>
+                      <Check
+                        className="public-lobby-selection-check"
+                        aria-hidden="true"
+                      />
                     )}
                   </button>
                 ))}
@@ -2749,7 +2764,7 @@ function PublicEvent() {
               <Leaderboard
                 players={data.leaderboard}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={selectPlayer}
               />
             </section>
           </div>

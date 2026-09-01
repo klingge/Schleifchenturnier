@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { isConfigurationLocked } from "./admin-policy";
 import { generateMatches, pairKey, type MatchHistory } from "./matchmaker";
+import { nextPlayerEmoji } from "./player-emojis";
 
 type Bindings = {
   DB: D1Database;
@@ -335,59 +336,6 @@ async function assembleEvent(db: D1Database, event: DbRow) {
   };
 }
 
-const emojis = [
-  "🎾",
-  "🦊",
-  "🐯",
-  "🐸",
-  "🐼",
-  "🐨",
-  "🦁",
-  "🐙",
-  "🦋",
-  "🐬",
-  "🦄",
-  "🐝",
-  "🦩",
-  "🐢",
-  "🦜",
-  "🐧",
-  "🦖",
-  "🐳",
-  "🐿️",
-  "🦔",
-  "🐞",
-  "🦦",
-  "🦥",
-  "🐊",
-  "🦒",
-  "🐘",
-  "🦘",
-  "🦚",
-  "🐓",
-  "🦉",
-  "🐺",
-  "🐗",
-  "🐴",
-  "🐮",
-  "🐵",
-  "🐶",
-  "🐱",
-  "🐰",
-  "🐹",
-  "🐻",
-  "🐠",
-  "🦀",
-  "🐌",
-  "🦎",
-  "🐲",
-  "🦕",
-  "🦭",
-  "🦬",
-  "🦙",
-  "🐐",
-];
-
 admin.get("/events", async (c) => {
   const events = await rows(
     c.env.DB.prepare(
@@ -491,8 +439,7 @@ admin.post("/events/:id/players", async (c) => {
       )
     ).map((row) => String(row.emoji)),
   );
-  const emoji =
-    emojis.find((candidate) => !used.has(candidate)) ?? `🎾${used.size + 1}`;
+  const emoji = nextPlayerEmoji(used);
   const timestamp = now();
   await c.env.DB.prepare(
     "INSERT INTO players (id, event_id, display_name, emoji, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
