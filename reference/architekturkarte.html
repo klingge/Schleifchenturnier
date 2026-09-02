@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Kompakte Architekturkarte der SGA-Sommerfest-Codebase"
+    />
+    <title>Architekturkarte · SGA-Codebase</title>
+    <link rel="stylesheet" href="../assets/learning.css" />
+  </head>
+  <body>
+    <header class="course-header">
+      <div class="course-header__inner">
+        <a
+          class="course-brand"
+          href="../lessons/0001-vom-klick-zur-datenbank.html"
+          >SGA Codebase Learning</a
+        >
+        <nav class="course-nav" aria-label="Lernnavigation">
+          <a href="../lessons/0001-vom-klick-zur-datenbank.html">Lektion 1</a>
+          <a href="architekturkarte.html" aria-current="page"
+            >Architekturkarte</a
+          >
+          <a href="glossar.html">Glossar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="course-main">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Nachschlagewerk · Systemorientierung</p>
+          <h1>Welche Aufgabe lebt wo?</h1>
+          <p class="lead">
+            Diese Karte ist kein Dateiverzeichnis. Sie ordnet jede wichtige
+            technische Verantwortung genau einer Ebene zu und zeigt, wo du eine
+            Änderung zuerst untersuchen solltest.
+          </p>
+        </div>
+        <dl class="lesson-meta">
+          <div>
+            <dt>Wahrheit</dt>
+            <dd>D1-Datenbank</dd>
+          </div>
+          <div>
+            <dt>Regeln</dt>
+            <dd>Worker</dd>
+          </div>
+          <div>
+            <dt>Interaktion</dt>
+            <dd>React-Client</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="lesson-section" aria-labelledby="stack-heading">
+        <p class="eyebrow">Die Schichten</p>
+        <h2 id="stack-heading">Von der Oberfläche zur dauerhaften Wahrheit</h2>
+        <p class="section-intro">
+          Abhängigkeiten laufen überwiegend von oben nach unten. Antworten und
+          neu geladene Daten laufen anschließend wieder nach oben.
+        </p>
+        <div class="architecture-stack">
+          <article class="architecture-layer">
+            <strong>1 · Einstieg und Routing</strong>
+            <p>
+              <code>src/main.tsx</code> startet React. <code>src/App.tsx</code>
+              trennt öffentliche und administrative Routen sowie die Anmeldung.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>2 · Feature-Oberflächen</strong>
+            <p>
+              <code>src/features/admin/</code> steuert das Turnier;
+              <code>src/features/public/</code> liest den öffentlichen Stand.
+              Komponenten rendern Zustand und senden Nutzerabsichten.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>3 · Fachmodule</strong>
+            <p>
+              <code>src/features/admin/results/</code> kapselt Ergebnisführung.
+              <code>src/domain/tournament.ts</code> beschreibt die gemeinsamen
+              Datenformen des Clients.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>4 · HTTP-Grenze</strong>
+            <p>
+              <code>src/lib/api.ts</code> vereinheitlicht Fetch, JSON,
+              CSRF-Header und Fehler. Das ist die Transportgrenze des Browsers.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>5 · Worker-Regeln</strong>
+            <p>
+              <code>worker/index.ts</code> definiert Routen und Validierung.
+              <code>worker/auth.ts</code> schützt Admin-Anfragen; spezialisierte
+              Module übernehmen Datenaufbau und Matchmaking.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>6 · Dauerhafte Daten</strong>
+            <p>
+              <code>migrations/</code> definiert das D1-Schema. Vorbereitete
+              SQL-Anweisungen lesen und schreiben Events, Spieler, Plätze,
+              Runden, Matches und Teilnahmeprotokolle.
+            </p>
+          </article>
+          <article class="architecture-layer">
+            <strong>7 · Qualitätsgrenze</strong>
+            <p>
+              Tests neben Client- und Worker-Code prüfen reine Regeln,
+              öffentliche Hooks und echte Worker-Integration gegen migriertes
+              D1.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="change-heading">
+        <p class="eyebrow">Änderungsnavigation</p>
+        <h2 id="change-heading">Wenn du X ändern willst, beginne hier</h2>
+        <div class="table-wrap">
+          <table class="route-table">
+            <thead>
+              <tr>
+                <th>Absicht</th>
+                <th>Erster Einstieg</th>
+                <th>Danach prüfen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Admin-Darstellung oder Interaktion</td>
+                <td><code>src/features/admin/</code></td>
+                <td>Fachmodul, Styles und Verhaltenstests</td>
+              </tr>
+              <tr>
+                <td>Ergebnis speichern oder korrigieren</td>
+                <td><code>src/features/admin/results/</code></td>
+                <td><code>src/lib/api.ts</code> und Worker-Ergebnisroute</td>
+              </tr>
+              <tr>
+                <td>Öffentliche Teilnehmeransicht</td>
+                <td><code>src/features/public/</code></td>
+                <td>
+                  öffentliche Worker-Route und <code>loadPublicEvent</code>
+                </td>
+              </tr>
+              <tr>
+                <td>Neue serverseitige Fachregel</td>
+                <td>
+                  <code>worker/index.ts</code> oder spezialisiertes Worker-Modul
+                </td>
+                <td>Zod-Schema, Statuscode und Worker-Tests</td>
+              </tr>
+              <tr>
+                <td>Event-Antwort oder Bestenliste</td>
+                <td><code>worker/event-data.ts</code></td>
+                <td>Client-DTOs und beide Leseansichten</td>
+              </tr>
+              <tr>
+                <td>Auslosungsqualität</td>
+                <td><code>worker/matchmaker.ts</code></td>
+                <td>Historienaufbau, Seed und deterministische Unit-Tests</td>
+              </tr>
+              <tr>
+                <td>Datenstruktur dauerhaft ändern</td>
+                <td>neue nummerierte Datei in <code>migrations/</code></td>
+                <td>SQL-Abfragen, DTOs und Integrationstests</td>
+              </tr>
+              <tr>
+                <td>Anmeldung oder Schreibschutz</td>
+                <td><code>worker/auth.ts</code></td>
+                <td><code>src/lib/api.ts</code>, Cookie- und CSRF-Vertrag</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="truth-heading">
+        <p class="eyebrow">Entscheidungsregel</p>
+        <h2 id="truth-heading">Wer darf was entscheiden?</h2>
+        <div class="reference-grid">
+          <article class="reference-panel">
+            <h3>React entscheidet Darstellung</h3>
+            <p>
+              Welche Felder sichtbar oder deaktiviert sind, welcher Entwurf im
+              Formular steht und welcher Speicherstatus angezeigt wird.
+            </p>
+          </article>
+          <article class="reference-panel">
+            <h3>Der Worker entscheidet Gültigkeit</h3>
+            <p>
+              Ob die Sitzung genügt, die Eingabe fachlich erlaubt ist und die
+              Runde im richtigen Zustand verändert wird. Clientprüfung allein
+              ist keine Sicherheitsgrenze.
+            </p>
+          </article>
+          <article class="reference-panel">
+            <h3>D1 entscheidet Dauerhaftigkeit</h3>
+            <p>
+              Erst ein erfolgreicher Datenbank-Schreibvorgang macht ein Ergebnis
+              zur dauerhaften Wahrheit. Ein lokaler React-State ist nur ein
+              vorläufiger Arbeitsstand.
+            </p>
+          </article>
+          <article class="reference-panel">
+            <h3>Tests entscheiden Regressionen</h3>
+            <p>
+              Sie halten beobachtbares Verhalten fest: Was muss trotz späterer
+              Refactorings gleich bleiben und welche Fehlerfälle sind bewusst?
+            </p>
+          </article>
+        </div>
+        <aside class="callout">
+          <strong>Praktische Heuristik</strong>
+          Wenn eine Regel auch bei einem manipulierten Browser gelten muss,
+          gehört sie in den Worker. Der Client darf dieselbe Regel zusätzlich
+          früh prüfen, um besseres Feedback zu geben.
+        </aside>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <span>SGA Codebase Learning · Referenz</span>
+      <a href="../docs/ARCHITEKTUR.md">Ausführliche technische Architektur</a>
+    </footer>
+  </body>
+</html>

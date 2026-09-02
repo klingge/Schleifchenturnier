@@ -61,9 +61,12 @@ import {
 import {
   compareCourtsByName,
   getRoundSecondsLeft,
-  type MatchEntryStatus,
-  shouldAutoSaveScore,
 } from "@/admin-dashboard-state";
+import {
+  useResultCorrection,
+  type ResultMutation,
+  type RoundResultEntry,
+} from "@/features/admin/results";
 
 const scoreValues = [0, 1, 2, 3, 4, 5, 6];
 type EventTab = "dashboard" | "teilnehmer" | "plaetze" | "bestenliste";
@@ -122,32 +125,18 @@ export function QR({ url }: { url: string }) {
 export function MatchCard({
   m,
   players,
-  result,
-  save,
-  onStatusChange,
+  entry,
 }: {
   m: Match;
   players: Map<string, Player>;
-  result: boolean;
-  save: (a: number, b: number) => Promise<void>;
-  onStatusChange?: (matchId: string, status: MatchEntryStatus) => void;
+  entry: RoundResultEntry;
 }) {
-  const initialSaved =
-    m.result_type === "played" &&
-    m.team_a_games !== null &&
-    m.team_b_games !== null
-      ? `${m.team_a_games}:${m.team_b_games}`
-      : "";
-  const [a, setA] = useState<number | null>(m.team_a_games),
-    [b, setB] = useState<number | null>(m.team_b_games),
-    [saving, setSaving] = useState(false),
-    [failedKey, setFailedKey] = useState(""),
-    [lastSaved, setLastSaved] = useState(initialSaved);
-  const currentKey = a !== null && b !== null ? `${a}:${b}` : "";
-  const canSave = a !== null && b !== null && a !== b;
-  const saved = canSave && currentKey === lastSaved;
-  const failed = currentKey !== "" && currentKey === failedKey;
-  const complete = saved && !saving && !failed;
+  const { teamA: a, teamB: b } = entry.draft;
+  const result = entry.editable;
+  const canSave = entry.validation === "valid";
+  const saved = entry.persistence === "saved";
+  const saving = entry.persistence === "saving";
+  const failed = entry.persistence === "failed";
   const saveState = saved
     ? "Gespeichert"
     : failed
@@ -157,51 +146,6 @@ export function MatchCard({
         : canSave
           ? "Speichert automatisch"
           : "Offen";
-  useEffect(() => {
-    setA(m.team_a_games);
-    setB(m.team_b_games);
-    setLastSaved(
-      m.result_type === "played" &&
-        m.team_a_games !== null &&
-        m.team_b_games !== null
-        ? `${m.team_a_games}:${m.team_b_games}`
-        : "",
-    );
-    setFailedKey("");
-  }, [m.id, m.team_a_games, m.team_b_games, m.result_type]);
-  useEffect(() => {
-    if (
-      !shouldAutoSaveScore({
-        resultMode: result,
-        a,
-        b,
-        currentKey,
-        lastSaved,
-        failedKey,
-        saving,
-      })
-    )
-      return;
-    if (a === null || b === null) return;
-    setSaving(true);
-    save(a, b)
-      .then(() => {
-        setLastSaved(currentKey);
-        setFailedKey("");
-      })
-      .catch(() => setFailedKey(currentKey))
-      .finally(() => setSaving(false));
-  }, [a, b, currentKey, failedKey, lastSaved, result, save, saving]);
-  useEffect(() => {
-    if (!result) return;
-    onStatusChange?.(m.id, {
-      complete,
-      valid: canSave,
-      saved,
-      saving,
-      failed,
-    });
-  }, [canSave, complete, failed, m.id, onStatusChange, result, saved, saving]);
   const n = (id: string) => (
     <span className="player-pill">
       <i>{players.get(id)?.emoji}</i>
@@ -270,9 +214,17 @@ export function MatchCard({
       </div>
       {result && (
         <footer>
-          <ScorePicker label="Team links" value={a} onChange={setA} />
+          <ScorePicker
+            label="Team links"
+            value={a}
+            onChange={(games) => entry.change("teamA", games)}
+          />
           <b className="score-divider">:</b>
-          <ScorePicker label="Team rechts" value={b} onChange={setB} />
+          <ScorePicker
+            label="Team rechts"
+            value={b}
+            onChange={(games) => entry.change("teamB", games)}
+          />
         </footer>
       )}
     </article>
@@ -356,34 +308,25 @@ export function ScoreCorrection({
   match,
   players,
   playerId,
-  save,
+  mutate,
 }: {
   round: Round;
   match: Match;
   players: Map<string, Player>;
   playerId: string;
-  save: (a: number, b: number) => Promise<void>;
+  mutate: ResultMutation;
 }) {
+  const correction = useResultCorrection({ match, mutate });
   const savedKey =
     match.team_a_games !== null && match.team_b_games !== null
-      ? `${match.team_a_games}:${match.team_b_games}`
+      ? match.team_a_games + ":" + match.team_b_games
       : "";
-  const [a, setA] = useState<number | null>(match.team_a_games),
-    [b, setB] = useState<number | null>(match.team_b_games),
-    [editing, setEditing] = useState(false),
-    [saving, setSaving] = useState(false),
-    [failed, setFailed] = useState(false),
-    [saved, setSaved] = useState(false);
-  const currentKey = a !== null && b !== null ? `${a}:${b}` : "";
-  const changed = currentKey !== "" && currentKey !== savedKey;
-  const canSave = changed && a !== null && b !== null && a !== b;
-  useEffect(() => {
-    setA(match.team_a_games);
-    setB(match.team_b_games);
-    setEditing(false);
-    setFailed(false);
-    setSaved(false);
-  }, [match.id, match.team_a_games, match.team_b_games]);
+  const { teamA: a, teamB: b } = correction.draft;
+  const editing = correction.editing;
+  const saving = correction.persistence === "saving";
+  const failed = correction.persistence === "failed";
+  const canSave =
+    correction.validation === "valid" && correction.persistence !== "saved";
   const playerPill = (id: string) => {
     const player = players.get(id);
     return (
@@ -414,7 +357,7 @@ export function ScoreCorrection({
               match.result_type === "missing" ? "destructive" : "secondary"
             }
           >
-            {saved
+            {correction.committed
               ? "Aktualisiert"
               : match.result_type === "missing"
                 ? "0:0"
@@ -426,11 +369,7 @@ export function ScoreCorrection({
               size="icon-sm"
               variant="ghost"
               aria-label={`Ergebnis aus Runde ${round.round_number} bearbeiten`}
-              onClick={() => {
-                setEditing(true);
-                setFailed(false);
-                setSaved(false);
-              }}
+              onClick={correction.begin}
             >
               <PencilSimple />
             </UiButton>
@@ -452,24 +391,18 @@ export function ScoreCorrection({
       </div>
       {editing && (
         <footer>
-          <ScorePicker label="Team links" value={a} onChange={setA} />
-          <ScorePicker label="Team rechts" value={b} onChange={setB} />
+          <ScorePicker
+            label="Team links"
+            value={a}
+            onChange={(games) => correction.change("teamA", games)}
+          />
+          <ScorePicker
+            label="Team rechts"
+            value={b}
+            onChange={(games) => correction.change("teamB", games)}
+          />
           <div className="correction-editor-actions">
-            <UiButton
-              disabled={!canSave || saving}
-              onClick={() => {
-                if (a === null || b === null || !canSave) return;
-                setSaving(true);
-                setFailed(false);
-                void save(a, b)
-                  .then(() => {
-                    setSaved(true);
-                    setEditing(false);
-                  })
-                  .catch(() => setFailed(true))
-                  .finally(() => setSaving(false));
-              }}
-            >
+            <UiButton disabled={!canSave || saving} onClick={correction.save}>
               <Check data-icon="inline-start" />
               {saving ? "Speichert\u2026" : "Speichern"}
             </UiButton>
@@ -477,12 +410,7 @@ export function ScoreCorrection({
               type="button"
               variant="ghost"
               disabled={saving}
-              onClick={() => {
-                setA(match.team_a_games);
-                setB(match.team_b_games);
-                setEditing(false);
-                setFailed(false);
-              }}
+              onClick={correction.cancel}
             >
               Abbrechen
             </UiButton>

@@ -26,6 +26,7 @@ sequenceDiagram
 - `src/App.tsx`: Routing, Anmeldung und Veranstaltungsübersicht
 - `src/components/app-shell.tsx`: gemeinsame Anwendungshülle und Zustandsanzeigen
 - `src/features/admin/`: Turnierleitung, Ergebnisdialoge und Verwaltungskomponenten
+- `src/features/admin/results/`: deep module für die Ergebnisführung mit den interfaces `useRoundResults` und `useResultCorrection`
 - `src/features/public/`: öffentliche, mobile Teilnehmeransicht
 - `src/features/tournament/`: gemeinsam genutzte Turnierdarstellung
 - `src/domain/tournament.ts`: zentrale DTOs für Events, Spieler, Plätze, Runden und Matches
@@ -108,6 +109,20 @@ stateDiagram-v2
 ```
 
 Während einer offenen Runde sind Teilnehmer- und Platzkonfiguration gesperrt. Der Server entscheidet diese Grenze unabhängig von der Darstellung. Bereits gespeicherte Ergebnisse bleiben entsprechend dem Referenzverhalten korrigierbar.
+
+## Ergebnisführung
+
+Die Turnierleitungsansicht überschreitet die Ergebnis-seam über zwei interfaces: `useRoundResults` für die laufende Runde und `useResultCorrection` für spätere Korrekturen. Beide verwenden dieselbe private Zustandsmaschine. Ihre implementation hält Entwurf, bestätigten Stand, laufenden Schreibvorgang und Fehlerzustand zusammen.
+
+```mermaid
+flowchart LR
+    UI[Turnierleitungsansicht] -->|Nutzerabsichten| RESULTS[Ergebnisführungs-module]
+    RESULTS -->|fachlicher Zustand| UI
+    RESULTS -->|vorläufiger mutate-adapter| HTTP[Worker]
+    RESULTS --> STATE[private Zustandsmaschine]
+```
+
+Schreibvorgänge werden pro Match serialisiert. Ändert die Turnierleitung einen Spielstand während des Speicherns erneut, bestätigt die Antwort nur den tatsächlich versendeten Snapshot; danach wird der neueste gültige Entwurf gespeichert. Verschiedene Matches dürfen weiterhin parallel speichern. Das interface ist zugleich die Testfläche und wird mit React Testing Library geprüft.
 
 ## Matchmaking
 
