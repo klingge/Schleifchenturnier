@@ -73,17 +73,14 @@ import {
   type Player,
 } from "@/domain/tournament";
 import {
-  canCompleteRoundWithEntries,
   comparePlayersByName,
-  countCompletedResults,
   getInitialSetupTab,
   getSittingOutCount,
-  isResultEntryRoundState,
-  type MatchEntryStatus,
 } from "@/admin-dashboard-state";
 import { LogoutMenuItem, type LogoutHandler } from "@/components/app-shell";
 import { DeleteEventDialog } from "@/features/admin/DeleteEventDialog";
 import { Leaderboard } from "@/features/tournament/Leaderboard";
+import { useRoundResults } from "@/features/admin/results";
 
 const eventTabs = [
   "dashboard",
@@ -131,22 +128,41 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
   const [participantAdding, setParticipantAdding] = useState(false);
   const [correctionPlayerId, setCorrectionPlayerId] = useState("");
   const participantNameRef = useRef<HTMLInputElement>(null);
-  const [matchEntryStatuses, setMatchEntryStatuses] = useState<
-    Record<string, MatchEntryStatus>
-  >({});
   const configurationLocked = Boolean(
     data?.currentRound && data.currentRound.state !== "completed",
   );
-  const load = () =>
-    api<EventData>(`/admin/events/${id}`)
-      .then((x) => {
-        setData(x);
-        setDuration(x.event.default_round_duration_seconds / 60);
-      })
-      .catch((x) => setError(x.message));
+  const load = useCallback(async () => {
+    try {
+      const next = await api<EventData>(`/admin/events/${id}`);
+      setData(next);
+      setDuration(next.event.default_round_duration_seconds / 60);
+    } catch (cause) {
+      const failure = cause as Error;
+      setError(failure.message);
+      throw failure;
+    }
+  }, [id, setData, setDuration, setError]);
+  const mutate = useCallback(
+    async (path: string, init: RequestInit) => {
+      setError("");
+      try {
+        await api(path, init);
+        await load();
+      } catch (cause) {
+        const failure = cause as Error;
+        setError(failure.message);
+        throw failure;
+      }
+    },
+    [load, setError],
+  );
+  const roundResults = useRoundResults({
+    round: data?.currentRound ?? null,
+    mutate,
+  });
   useEffect(() => {
-    void load();
-  }, [id]);
+    void load().catch(() => {});
+  }, [load]);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [id]);
@@ -157,9 +173,6 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
     }
   }, [data, defaultTab, id, nav, requestedTab]);
   useEffect(() => {
-    setMatchEntryStatuses({});
-  }, [data?.currentRound?.id, data?.currentRound?.state]);
-  useEffect(() => {
     if (activeTab !== "teilnehmer" || configurationLocked) {
       setParticipantAddOpen(false);
       return;
@@ -167,36 +180,6 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
     if (participantAddOpen && !participantAdding)
       participantNameRef.current?.focus();
   }, [activeTab, configurationLocked, participantAddOpen, participantAdding]);
-  const updateMatchEntryStatus = useCallback(
-    (matchId: string, status: MatchEntryStatus) => {
-      setMatchEntryStatuses((current) => {
-        const existing = current[matchId];
-        if (
-          existing &&
-          existing.complete === status.complete &&
-          existing.valid === status.valid &&
-          existing.saved === status.saved &&
-          existing.saving === status.saving &&
-          existing.failed === status.failed
-        ) {
-          return current;
-        }
-        return { ...current, [matchId]: status };
-      });
-    },
-    [],
-  );
-  async function mutate(path: string, init: RequestInit) {
-    setError("");
-    try {
-      await api(path, init);
-      await load();
-    } catch (x) {
-      const e = x as Error;
-      setError(e.message);
-      throw e;
-    }
-  }
   if (!data)
     return error ? (
       <UiAlert variant="destructive">
@@ -256,13 +239,9 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
     alphabeticalPlayers = [...data.players].sort(comparePlayersByName),
     rankedPlayers = data.leaderboard,
     lobbyOpen = !round || round.state === "completed",
-    resultEntryOpen = isResultEntryRoundState(round?.state),
-    completedResults = countCompletedResults(round?.matches ?? []),
-    roundCanComplete = canCompleteRoundWithEntries(
-      round?.state,
-      round?.matches ?? [],
-      matchEntryStatuses,
-    );
+    resultEntryOpen = roundResults.active,
+    completedResults = roundResults.progress.recorded,
+    roundCanComplete = roundResults.progress.canComplete;
   const generate = () =>
     mutate(`/admin/events/${id}/generate`, {
       method: "POST",
@@ -513,17 +492,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                           key={m.id}
                           m={m}
                           players={pm}
-                          result={resultEntryOpen}
-                          onStatusChange={updateMatchEntryStatus}
-                          save={(a, b) =>
-                            mutate(`/admin/matches/${m.id}/result`, {
-                              method: "PUT",
-                              body: JSON.stringify({
-                                teamAGames: a,
-                                teamBGames: b,
-                              }),
-                            })
-                          }
+                          entry={roundResults.entries.get(m.id)!}
                         />
                       ))}
                     </div>
@@ -579,12 +548,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                     <UiButton
                       size="lg"
                       disabled={!roundCanComplete}
-                      onClick={() => {
-                        void mutate(`/admin/rounds/${round.id}/complete`, {
-                          method: "POST",
-                          body: JSON.stringify({ allowMissing: false }),
-                        }).catch(() => {});
-                      }}
+                      onClick={roundResults.completion.run}
                     >
                       <Check data-icon="inline-start" /> Runde abschließen
                     </UiButton>
@@ -838,15 +802,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                                 match={match}
                                 players={pm}
                                 playerId={correctionPlayer.id}
-                                save={(a, b) =>
-                                  mutate(`/admin/matches/${match.id}/result`, {
-                                    method: "PUT",
-                                    body: JSON.stringify({
-                                      teamAGames: a,
-                                      teamBGames: b,
-                                    }),
-                                  })
-                                }
+                                mutate={mutate}
                               />
                             ))}
                           </div>

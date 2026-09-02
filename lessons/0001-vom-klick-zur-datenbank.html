@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Interaktive Lektion zum End-to-End-Datenfluss eines Matchergebnisses in der SGA-Codebase"
+    />
+    <title>Lektion 1: Vom Klick zur Datenbank · SGA-Codebase</title>
+    <link rel="stylesheet" href="../assets/learning.css" />
+    <script src="../assets/learning.js" defer></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <div class="course-header__inner">
+        <a class="course-brand" href="0001-vom-klick-zur-datenbank.html"
+          >SGA Codebase Learning</a
+        >
+        <nav class="course-nav" aria-label="Lernnavigation">
+          <a href="0001-vom-klick-zur-datenbank.html" aria-current="page"
+            >Lektion 1</a
+          >
+          <a href="../reference/architekturkarte.html">Architekturkarte</a>
+          <a href="../reference/glossar.html">Glossar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="course-main">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Lektion 1 · End-to-End-Datenfluss</p>
+          <h1>Vom Klick zur Datenbank – und sicher zurück</h1>
+          <p class="lead">
+            Du verfolgst genau eine Aktion: Die Turnierleitung trägt ein
+            Matchergebnis ein. Danach kannst du erklären, welche Schicht welchen
+            Teil der Arbeit übernimmt und warum eine schnelle zweite Eingabe
+            nicht verloren geht.
+          </p>
+        </div>
+        <dl class="lesson-meta">
+          <div>
+            <dt>Dauer</dt>
+            <dd>ca. 15 Minuten</dd>
+          </div>
+          <div>
+            <dt>Vorwissen</dt>
+            <dd>React-Grundlagen</dd>
+          </div>
+          <div>
+            <dt>Gewinn</dt>
+            <dd>einen Request verfolgen</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="lesson-section" aria-labelledby="model-heading">
+        <p class="eyebrow">Das mentale Modell</p>
+        <h2 id="model-heading">Cockpit, Schiedsrichter, Spielbericht</h2>
+        <p class="section-intro">
+          Die Analogie trennt drei Verantwortungen. Sie ist absichtlich grob;
+          gleich danach verbinden wir sie mit den echten Modulen.
+        </p>
+        <div class="mental-model">
+          <article class="concept">
+            <span class="concept__number">1</span>
+            <h3>React ist das Cockpit</h3>
+            <p>
+              Es zeigt Eingaben sofort, hält vorläufigen Zustand und übersetzt
+              Klicks in Nutzerabsichten. Es ist schnell, aber nicht die
+              dauerhafte Wahrheit.
+            </p>
+          </article>
+          <article class="concept">
+            <span class="concept__number">2</span>
+            <h3>Der Worker ist der Schiedsrichter</h3>
+            <p>
+              Er prüft Sitzung, CSRF, Datenform und Fachregeln. Ein
+              manipulierter Browser kann diese Regeln nicht umgehen.
+            </p>
+          </article>
+          <article class="concept">
+            <span class="concept__number">3</span>
+            <h3>D1 ist der Spielbericht</h3>
+            <p>
+              Erst was dort erfolgreich geschrieben wurde, überlebt Neuladen,
+              Gerätewechsel und das Ende der aktuellen React-Sitzung.
+            </p>
+          </article>
+        </div>
+        <aside class="callout">
+          <strong>Merksatz</strong>
+          Der Client darf optimistisch arbeiten. Der Worker entscheidet, was
+          erlaubt ist. D1 hält fest, was wirklich passiert ist.
+        </aside>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="flow-heading">
+        <p class="eyebrow">Der echte Pfad</p>
+        <h2 id="flow-heading">Acht Stationen eines Ergebnisses</h2>
+        <p class="section-intro">
+          Wähle eine Station. Darunter siehst du ihre Verantwortung und einen
+          unveränderten Ausschnitt aus dem aktuellen Repository.
+        </p>
+
+        <ol class="flow-track" aria-label="Datenfluss eines Matchergebnisses">
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="match-card"
+              aria-pressed="true"
+            >
+              <span>MatchCard</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="results"
+              aria-pressed="false"
+            >
+              <span>Ergebnis-Modul</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="adapter"
+              aria-pressed="false"
+            >
+              <span>mutate-Adapter</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="api"
+              aria-pressed="false"
+            >
+              <span>HTTP-Helfer</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="auth"
+              aria-pressed="false"
+            >
+              <span>Auth-Middleware</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="validation"
+              aria-pressed="false"
+            >
+              <span>Worker-Regel</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="d1"
+              aria-pressed="false"
+            >
+              <span>D1-Schreibvorgang</span>
+            </button>
+          </li>
+          <li>
+            <button
+              class="flow-node"
+              type="button"
+              data-flow-node="reload"
+              aria-pressed="false"
+            >
+              <span>Neuladen</span>
+            </button>
+          </li>
+        </ol>
+
+        <article class="flow-detail" data-flow-detail="match-card">
+          <div class="flow-detail__heading">
+            <h3>1 · MatchCard sendet eine Absicht</h3>
+            <p>UI → öffentliches Modul-Interface</p>
+          </div>
+          <p>
+            Die Komponente kennt weder Fetch noch Autosave-Regeln. Sie rendert
+            <code>entry.draft</code> und sagt nur: „Ändere Team A auf diesen
+            Wert.“ Das ist eine saubere Grenze zwischen Darstellung und
+            Fachlogik.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../src/features/admin/TournamentComponents.tsx"
+                >TournamentComponents.tsx</a
+              >
+              <span>Zeilen 217–226</span>
+            </div>
+            <pre><code>&lt;ScorePicker
+  label="Team links"
+  value={a}
+  onChange={(games) =&gt; entry.change("teamA", games)}
+/&gt;
+&lt;b className="score-divider"&gt;:&lt;/b&gt;
+&lt;ScorePicker
+  label="Team rechts"
+  value={b}
+  onChange={(games) =&gt; entry.change("teamB", games)}
+/&gt;</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="results" hidden>
+          <div class="flow-detail__heading">
+            <h3>2 · useRoundResults übernimmt den Entwurf</h3>
+            <p>Absicht → Zustandsübergang → Autosave</p>
+          </div>
+          <p>
+            Der Hook übersetzt die Änderung in eine Reducer-Action. Ein Effekt
+            sucht anschließend Einträge, die gültig und <code>dirty</code> sind.
+            Erst dann wird ein unveränderlicher Snapshot versendet.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../src/features/admin/results/use-round-results.ts"
+                >use-round-results.ts</a
+              >
+              <span>Zeilen 184–214, 238–241</span>
+            </div>
+            <pre><code>if (
+  validateScore(entry.draft) !== "valid" ||
+  entryPersistence(entry) !== "dirty" ||
+  entry.saving
+) continue;
+
+const snapshot = entry.draft;
+dispatch({ type: "save-started", matchId: entry.matchId, token, snapshot, generation });
+void mutate("/admin/matches/" + entry.matchId + "/result", {
+  method: "PUT",
+  body: JSON.stringify({
+    teamAGames: snapshot.teamA,
+    teamBGames: snapshot.teamB,
+  }),
+});
+
+const change = useCallback(
+  (matchId, team, games) =&gt;
+    dispatch({ type: "score-changed", matchId, team, games }),
+  [],
+);</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="adapter" hidden>
+          <div class="flow-detail__heading">
+            <h3>3 · EventAdmin verbindet Schreiben und Neuladen</h3>
+            <p>Fachmodul → Transportadapter</p>
+          </div>
+          <p>
+            Das Ergebnis-Modul bekommt keine direkte Fetch-Abhängigkeit. Es ruft
+            <code>mutate(path, init)</code> auf. Der Adapter sendet die
+            Mutation, lädt danach das vollständige Event und vereinheitlicht
+            Fehleranzeige.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../src/features/admin/EventAdmin.tsx">EventAdmin.tsx</a>
+              <span>Zeilen 145–162</span>
+            </div>
+            <pre><code>const mutate = useCallback(
+  async (path: string, init: RequestInit) =&gt; {
+    setError("");
+    try {
+      await api(path, init);
+      await load();
+    } catch (cause) {
+      const failure = cause as Error;
+      setError(failure.message);
+      throw failure;
+    }
+  },
+  [load, setError],
+);
+
+const roundResults = useRoundResults({
+  round: data?.currentRound ?? null,
+  mutate,
+});</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="api" hidden>
+          <div class="flow-detail__heading">
+            <h3>4 · api() baut die HTTP-Anfrage</h3>
+            <p>Browserlogik → HTTP-Grenze</p>
+          </div>
+          <p>
+            Alle Aufrufe erhalten das Präfix <code>/api</code> und JSON-Header.
+            Bei schreibenden Methoden ergänzt der Helfer den aktuellen
+            CSRF-Token. Fehlerantworten werden zu normalen JavaScript-Fehlern.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../src/lib/api.ts">src/lib/api.ts</a>
+              <span>Zeilen 11–21</span>
+            </div>
+            <pre><code>export async function api&lt;T&gt;(
+  path: string,
+  init: RequestInit = {},
+): Promise&lt;T&gt; {
+  const response = await fetch(`/api${path}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...(csrfToken &amp;&amp; !["GET", "HEAD"].includes(init.method ?? "GET")
+        ? { "x-csrf-token": csrfToken }
+        : {}),
+      ...init.headers,
+    },
+  });
+  // Antwort auswerten …
+}</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="auth" hidden>
+          <div class="flow-detail__heading">
+            <h3>5 · requireAdmin schützt den Schreibvorgang</h3>
+            <p>HTTP-Anfrage → Sicherheitsgrenze</p>
+          </div>
+          <p>
+            Das HttpOnly-Cookie beweist eine gültige Sitzung. Für schreibende
+            Methoden muss zusätzlich der Headerwert zum CSRF-Wert der Sitzung
+            passen. Erst dann ruft <code>next()</code> den Routen-Handler auf.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../worker/auth.ts">worker/auth.ts</a>
+              <span>Zeilen 45–60</span>
+            </div>
+            <pre><code>const session = await readSession(
+  getCookie(c, "sga_session"),
+  c.env.SESSION_SECRET,
+);
+if (!session) return c.json({ error: "Nicht angemeldet." }, 401);
+if (
+  !["GET", "HEAD"].includes(c.req.method) &amp;&amp;
+  c.req.header("x-csrf-token") !== session.csrf
+) {
+  return c.json({ error: "Die Sitzung konnte nicht bestätigt werden." }, 403);
+}
+await next();</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="validation" hidden>
+          <div class="flow-detail__heading">
+            <h3>6 · Zod und Fachregel prüfen das Ergebnis</h3>
+            <p>Unbekanntes JSON → gültige Fachdaten</p>
+          </div>
+          <p>
+            TypeScript schützt nur Code beim Entwickeln; eine HTTP-Anfrage
+            bleibt zur Laufzeit nicht vertrauenswürdig. Zod erzwingt ganze,
+            nicht negative Zahlen. Die Route lehnt zusätzlich ein Unentschieden
+            ab.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../worker/index.ts">worker/index.ts</a>
+              <span>Zeilen 478–489</span>
+            </div>
+            <pre><code>admin.put("/matches/:id/result", async (c) =&gt; {
+  const input = z
+    .object({
+      teamAGames: z.coerce.number().int().min(0),
+      teamBGames: z.coerce.number().int().min(0),
+    })
+    .safeParse(await c.req.json().catch(() =&gt; ({})));
+
+  if (!input.success || input.data.teamAGames === input.data.teamBGames)
+    return c.json(
+      { error: "Ein gespieltes Match darf nicht unentschieden enden." },
+      400,
+    );
+  // …
+});</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="d1" hidden>
+          <div class="flow-detail__heading">
+            <h3>7 · D1 speichert die dauerhafte Wahrheit</h3>
+            <p>geprüfte Fachdaten → SQL</p>
+          </div>
+          <p>
+            Die Route prüft zuerst, ob das Match existiert und sein Rundenstatus
+            Änderungen erlaubt. Danach bindet sie die Werte getrennt an ein
+            vorbereitetes SQL-Statement und markiert das Ergebnis als gespielt.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../worker/index.ts">worker/index.ts</a>
+              <span>Zeilen 490–509</span>
+            </div>
+            <pre><code>if (!match) return c.json({ error: "Match nicht gefunden." }, 404);
+if (!["running", "paused", "results", "completed"].includes(match.state))
+  return c.json(
+    { error: "Dieses Ergebnis kann im aktuellen Rundenstatus nicht geändert werden." },
+    409,
+  );
+
+await c.env.DB.prepare(
+  "UPDATE matches SET team_a_games = ?, team_b_games = ?, result_type = 'played' WHERE id = ?",
+)
+  .bind(input.data.teamAGames, input.data.teamBGames, c.req.param("id"))
+  .run();
+return c.json({ ok: true });</code></pre>
+          </div>
+        </article>
+
+        <article class="flow-detail" data-flow-detail="reload" hidden>
+          <div class="flow-detail__heading">
+            <h3>8 · Der Client lädt den bestätigten Stand</h3>
+            <p>D1 → EventData → React</p>
+          </div>
+          <p>
+            Nach dem erfolgreichen PUT wartet <code>mutate</code> auf
+            <code>load()</code>. Die GET-Route baut aus D1 ein vollständiges
+            <code>EventData</code>. <code>setData(next)</code> löst das erneute
+            Rendern mit der Serverwahrheit aus.
+          </p>
+          <div class="code-frame">
+            <div class="code-ref">
+              <a href="../src/features/admin/EventAdmin.tsx">EventAdmin.tsx</a>
+              <span>Zeilen 134–150</span>
+            </div>
+            <pre><code>const load = useCallback(async () =&gt; {
+  try {
+    const next = await api&lt;EventData&gt;(`/admin/events/${id}`);
+    setData(next);
+    setDuration(next.event.default_round_duration_seconds / 60);
+  } catch (cause) {
+    const failure = cause as Error;
+    setError(failure.message);
+    throw failure;
+  }
+}, [id, setData, setDuration, setError]);
+
+await api(path, init);
+await load();</code></pre>
+          </div>
+        </article>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="state-heading">
+        <p class="eyebrow">Der entscheidende Unterschied</p>
+        <h2 id="state-heading">Entwurf ist nicht gleich gespeicherter Stand</h2>
+        <p class="section-intro">
+          Ein einzelnes Match besitzt während der Eingabe mehrere Wahrheiten mit
+          unterschiedlichen Aufgaben. Diese Trennung verhindert verlorene
+          Eingaben und falsche Erfolgsmeldungen.
+        </p>
+        <div class="table-wrap">
+          <table class="state-table">
+            <thead>
+              <tr>
+                <th>Wert</th>
+                <th>Bedeutung</th>
+                <th>Beispiel</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>draft</code></td>
+                <td>Neueste Eingabe, die gerade in der UI sichtbar ist.</td>
+                <td><code>6:4</code></td>
+              </tr>
+              <tr>
+                <td><code>saving.snapshot</code></td>
+                <td>Exakt der Stand, der zum laufenden Request gehört.</td>
+                <td><code>6:3</code></td>
+              </tr>
+              <tr>
+                <td><code>persisted</code></td>
+                <td>Zuletzt erfolgreich vom Server bestätigter Stand.</td>
+                <td><code>6:3</code></td>
+              </tr>
+              <tr>
+                <td><code>failedKey</code></td>
+                <td>
+                  Fehlgeschlagener Stand, der nicht endlos erneut gesendet wird.
+                </td>
+                <td><code>6:3</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <aside class="callout">
+          <strong>Warum nicht einfach nur einen Spielstand speichern?</strong>
+          Weil eine Serverantwort immer den Stand bestätigt, der vor einigen
+          Millisekunden versendet wurde – nicht automatisch die neueste Eingabe,
+          die inzwischen im Browser steht.
+        </aside>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="simulation-heading">
+        <p class="eyebrow">Interaktive Simulation</p>
+        <h2 id="simulation-heading">
+          Was passiert bei einer schnellen Korrektur?
+        </h2>
+        <p class="section-intro">
+          Gehe Schritt für Schritt durch den Fall: <code>6:3</code> wird gerade
+          gespeichert, während die Turnierleitung schon auf <code>6:4</code>
+          korrigiert.
+        </p>
+
+        <div class="simulator" data-simulator>
+          <div class="simulator__header">
+            <strong>Ein Match, höchstens ein laufender Request</strong>
+            <span
+              class="simulator__counter"
+              data-simulator-counter
+              aria-live="polite"
+              >Schritt 1 von 6</span
+            >
+          </div>
+
+          <article class="simulator__state" data-simulator-state>
+            <h3>Ausgangslage: noch kein Ergebnis</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>– : –</strong><small>offen</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>—</strong
+                ><small>kein Request</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>—</strong
+                ><small>nichts gespeichert</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              Ohne vollständige Eingabe gibt es keinen Speicherauftrag.
+            </p>
+          </article>
+
+          <article class="simulator__state" data-simulator-state hidden>
+            <h3>Eingabe: 6:3 ist vollständig und gültig</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>6 : 3</strong><small>dirty</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>—</strong
+                ><small>noch kein Request</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>—</strong
+                ><small>nichts gespeichert</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              <code>dirty</code> bedeutet: gültig, aber noch nicht gleich dem
+              bestätigten Stand. Der Autosave-Effekt darf starten.
+            </p>
+          </article>
+
+          <article class="simulator__state" data-simulator-state hidden>
+            <h3>Der erste Request besitzt den Snapshot 6:3</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>6 : 3</strong
+                ><small>sichtbar</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>6 : 3</strong
+                ><small>saving</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>—</strong><small>wartet</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              Der Snapshot wird beim Start festgehalten. Für dasselbe Match wird
+              kein zweiter Request parallel gestartet.
+            </p>
+          </article>
+
+          <article class="simulator__state" data-simulator-state hidden>
+            <h3>Währenddessen ändert der Nutzer auf 6:4</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>6 : 4</strong
+                ><small>neueste Eingabe</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>6 : 3</strong
+                ><small>unverändert</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>—</strong><small>wartet</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              Die UI darf den neuen Entwurf sofort zeigen. Der laufende Request
+              bleibt korrekt seinem alten Snapshot zugeordnet.
+            </p>
+          </article>
+
+          <article class="simulator__state" data-simulator-state hidden>
+            <h3>Die erste Antwort bestätigt nur 6:3</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>6 : 4</strong
+                ><small>bleibt erhalten</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>—</strong
+                ><small>Request beendet</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>6 : 3</strong
+                ><small>Serverantwort</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              Weil <code>draft !== persisted</code>, ist der Eintrag wieder
+              <code>dirty</code>. Der Effekt sendet jetzt den neuesten Stand.
+            </p>
+          </article>
+
+          <article class="simulator__state" data-simulator-state hidden>
+            <h3>Der zweite Request bestätigt 6:4</h3>
+            <div class="state-lanes">
+              <div class="state-lane">
+                <span>Entwurf</span><strong>6 : 4</strong
+                ><small>sichtbar</small>
+              </div>
+              <div class="state-lane">
+                <span>Unterwegs</span><strong>—</strong
+                ><small>alles beendet</small>
+              </div>
+              <div class="state-lane">
+                <span>Bestätigt</span><strong>6 : 4</strong><small>saved</small>
+              </div>
+            </div>
+            <p class="simulator__explanation">
+              Jetzt sind Entwurf und bestätigter Stand gleich. Keine Eingabe
+              ging verloren und ältere Antworten konnten nichts überschreiben.
+            </p>
+          </article>
+
+          <div class="simulator__controls">
+            <button
+              class="button"
+              type="button"
+              data-simulator-previous
+              disabled
+            >
+              Zurück
+            </button>
+            <button
+              class="button button--primary"
+              type="button"
+              data-simulator-next
+            >
+              Weiter
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="quiz-heading">
+        <p class="eyebrow">Abrufen statt wiederlesen</p>
+        <h2 id="quiz-heading">Drei kurze Verständnischecks</h2>
+        <p class="section-intro">
+          Antworte zuerst aus dem Gedächtnis. Sofortiges Feedback ist hilfreich;
+          die kleine Anstrengung davor sorgt dafür, dass das Modell hängen
+          bleibt.
+        </p>
+
+        <div class="quiz-list">
+          <fieldset
+            class="quiz-question"
+            data-quiz-question
+            data-correct-feedback="Richtig. Die Komponente sendet nur die Absicht; das Ergebnis-Modul besitzt Entwurf und Speicherlogik."
+            data-wrong-feedback="Noch nicht. Suche die Schicht, die Entwurf, Validierung und Autosave gemeinsam besitzt."
+          >
+            <legend>Wo lebt der lokale Spielstand-Entwurf?</legend>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-answer="wrong">
+                In der MatchCard
+              </button>
+              <button class="quiz-option" type="button" data-answer="correct">
+                Im Ergebnisführungs-Modul selbst
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                In der D1-Datenbank
+              </button>
+            </div>
+            <p class="quiz-feedback" data-quiz-feedback aria-live="polite"></p>
+          </fieldset>
+
+          <fieldset
+            class="quiz-question"
+            data-quiz-question
+            data-correct-feedback="Richtig. Das Cookie belegt die Sitzung; der zusätzliche Header schützt schreibende Anfragen vor CSRF."
+            data-wrong-feedback="Noch nicht. Für einen Schreibvorgang prüft die Middleware zwei zusammengehörige Nachweise."
+          >
+            <legend>Was schützt den PUT-Request gemeinsam?</legend>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-answer="correct">
+                Cookie und CSRF-Token
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                Passwort und Request-URL
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                React und TypeScript-Typen
+              </button>
+            </div>
+            <p class="quiz-feedback" data-quiz-feedback aria-live="polite"></p>
+          </fieldset>
+
+          <fieldset
+            class="quiz-question"
+            data-quiz-question
+            data-correct-feedback="Richtig. Das autoritative Neuladen ersetzt lokale Annahmen durch das vollständige EventData aus dem Worker."
+            data-wrong-feedback="Noch nicht. Suche den Schritt, der nach dem erfolgreichen api-Aufruf ausdrücklich folgt."
+          >
+            <legend>Was folgt auf einen erfolgreichen PUT?</legend>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-answer="correct">
+                Event vollständig erneut laden
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                Nur den Button umfärben
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                Browser vollständig neu starten
+              </button>
+            </div>
+            <p class="quiz-feedback" data-quiz-feedback aria-live="polite"></p>
+          </fieldset>
+
+          <fieldset
+            class="challenge"
+            data-quiz-question
+            data-correct-feedback="Genau. Wenn der PUT erfolgreich war, aber die Oberfläche alt bleibt, prüfst du zuerst die Verbindung aus mutate(), load() und setData()."
+            data-wrong-feedback="Das könnte später relevant sein. Beginne aber dort, wo nach erfolgreichem Schreiben der bestätigte Zustand zurück in React gelangen soll."
+          >
+            <legend>
+              Praxisfall: Der PUT ist erfolgreich, aber die UI zeigt danach den
+              alten Stand. Wo beginnst du?
+            </legend>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-answer="correct">
+                EventAdmin mutate und load
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                MatchCard Farben und Layout
+              </button>
+              <button class="quiz-option" type="button" data-answer="wrong">
+                D1 Migrationen und Schema
+              </button>
+            </div>
+            <p class="quiz-feedback" data-quiz-feedback aria-live="polite"></p>
+          </fieldset>
+        </div>
+      </section>
+
+      <section
+        class="lesson-section checkpoint"
+        aria-labelledby="checkpoint-heading"
+      >
+        <div>
+          <p class="eyebrow">Lern-Checkpoint</p>
+          <h2 id="checkpoint-heading">Erkläre den Rückweg in einem Satz</h2>
+          <p>
+            Schicke deine Antwort im Chat. Erst deine eigene Erklärung zeigt, ob
+            das Modell abrufbar ist; erst dann entsteht ein Lernprotokoll und
+            wir planen Lektion 2 passend zu deinem tatsächlichen Stand.
+          </p>
+        </div>
+        <div class="checkpoint__prompt">
+          <p>
+            <strong>Frage:</strong> Warum lädt <code>EventAdmin</code> nach
+            einem erfolgreichen Ergebnis-Request das Event noch einmal, obwohl
+            der eingegebene Spielstand bereits im React-State steht?
+          </p>
+        </div>
+      </section>
+
+      <section class="lesson-section" aria-labelledby="source-heading">
+        <p class="eyebrow">Weiterlesen</p>
+        <h2 id="source-heading">Eine Primärquelle für den nächsten Schritt</h2>
+        <p class="section-intro">
+          Lies bei Bedarf den Abschnitt „Extracting state logic into a reducer“
+          in der offiziellen
+          <a href="https://react.dev/learn/managing-state"
+            >React-Dokumentation zur Zustandsverwaltung</a
+          >. Vergleiche die dortige Action-/Reducer-Idee mit
+          <code>resultReducer</code> in dieser Codebase. Für den Gesamtüberblick
+          bleibt die lokale
+          <a href="../docs/ARCHITEKTUR.md">technische Architektur</a> die
+          wichtigste Quelle.
+        </p>
+        <aside class="callout">
+          <strong>Etwas unklar?</strong>
+          Frage mich nach genau der Station, dem Codeausschnitt oder dem
+          Begriff, an dem dein mentales Modell noch springt. Wir müssen nicht
+          bis zur nächsten Lektion warten.
+        </aside>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <span>SGA Codebase Learning · Lektion 1</span>
+      <a href="../reference/architekturkarte.html">Architekturkarte öffnen</a>
+    </footer>
+  </body>
+</html>

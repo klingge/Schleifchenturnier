@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Technisches Glossar für die SGA-Sommerfest-Codebase"
+    />
+    <title>Glossar · SGA-Codebase</title>
+    <link rel="stylesheet" href="../assets/learning.css" />
+  </head>
+  <body>
+    <header class="course-header">
+      <div class="course-header__inner">
+        <a
+          class="course-brand"
+          href="../lessons/0001-vom-klick-zur-datenbank.html"
+          >SGA Codebase Learning</a
+        >
+        <nav class="course-nav" aria-label="Lernnavigation">
+          <a href="../lessons/0001-vom-klick-zur-datenbank.html">Lektion 1</a>
+          <a href="architekturkarte.html">Architekturkarte</a>
+          <a href="glossar.html" aria-current="page">Glossar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="course-main">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Nachschlagewerk · Gemeinsame Sprache</p>
+          <h1>Technische Begriffe am echten Projekt</h1>
+          <p class="lead">
+            Kurze Definitionen mit dem konkreten Ort, an dem der Begriff in der
+            SGA-Anwendung sichtbar wird.
+          </p>
+        </div>
+        <dl class="lesson-meta">
+          <div>
+            <dt>Fokus</dt>
+            <dd>Projektpraxis</dd>
+          </div>
+          <div>
+            <dt>Sprache</dt>
+            <dd>Deutsch + Fachbegriff</dd>
+          </div>
+          <div>
+            <dt>Format</dt>
+            <dd>Druckbar</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="lesson-section" aria-labelledby="glossary-heading">
+        <p class="eyebrow">Grundbegriffe</p>
+        <h2 id="glossary-heading">Vom Browser bis zur Datenbank</h2>
+        <dl class="glossary">
+          <div>
+            <dt>SPA</dt>
+            <dd>
+              Single-Page Application: Der Browser lädt einmal die React-App;
+              React Router wechselt Ansichten ohne vollständigen Seitenwechsel.
+              Einstieg: <code>src/App.tsx</code>.
+            </dd>
+          </div>
+          <div>
+            <dt>Komponente</dt>
+            <dd>
+              Eine React-Funktion, die aus Props und Zustand UI beschreibt.
+              Beispiel: <code>MatchCard</code> rendert Teams, Spielstand und
+              Speicherstatus.
+            </dd>
+          </div>
+          <div>
+            <dt>Hook</dt>
+            <dd>
+              Wiederverwendbare React-Logik mit Zustand und Seiteneffekten.
+              <code>useRoundResults</code> ist die öffentliche Schnittstelle der
+              laufenden Ergebnisführung.
+            </dd>
+          </div>
+          <div>
+            <dt>Reducer</dt>
+            <dd>
+              Eine Funktion, die aus altem Zustand und einer Action den nächsten
+              Zustand berechnet. Dadurch bleiben komplexe Übergänge zentral und
+              testbar.
+            </dd>
+          </div>
+          <div>
+            <dt>Zustandsmaschine</dt>
+            <dd>
+              Ein Modell erlaubter Zustände und Übergänge. In der
+              Ergebnisführung entstehen unter anderem <code>dirty</code>,
+              <code>saving</code>, <code>saved</code> und <code>failed</code>.
+            </dd>
+          </div>
+          <div>
+            <dt>DTO</dt>
+            <dd>
+              Data Transfer Object: die vereinbarte Datenform über eine Grenze.
+              <code>EventData</code> ist die zentrale Event-Antwort zwischen
+              Worker und Client.
+            </dd>
+          </div>
+          <div>
+            <dt>Middleware</dt>
+            <dd>
+              Code, der vor oder nach einem Routen-Handler läuft. Im Projekt
+              prüft
+              <code>requireAdmin</code> Sitzung und CSRF, bevor eine Admin-Route
+              schreiben darf.
+            </dd>
+          </div>
+          <div>
+            <dt>Binding</dt>
+            <dd>
+              Eine vom Cloudflare-Runtime-Kontext bereitgestellte Ressource.
+              <code>c.env.DB</code> ist das D1-Binding; Geheimnisse liegen
+              ebenfalls in <code>c.env</code>.
+            </dd>
+          </div>
+          <div>
+            <dt>Migration</dt>
+            <dd>
+              Eine versionierte, unveränderliche SQL-Änderung am
+              Datenbankschema. Sie liegt nummeriert unter
+              <code>migrations/</code>.
+            </dd>
+          </div>
+          <div>
+            <dt>Prepared Statement</dt>
+            <dd>
+              Vorbereitete SQL-Anweisung mit getrennt gebundenen Werten. D1
+              nutzt
+              <code>prepare(...).bind(...)</code>, statt Nutzdaten in SQL-Text
+              einzubauen.
+            </dd>
+          </div>
+          <div>
+            <dt>CSRF</dt>
+            <dd>
+              Cross-Site Request Forgery. Zusätzlich zum Cookie muss eine
+              schreibende Admin-Anfrage den passenden Token im Header senden.
+            </dd>
+          </div>
+          <div>
+            <dt>Autoritatives Neuladen</dt>
+            <dd>
+              Nach einer Mutation lädt der Client das vollständige Event erneut.
+              Damit ersetzt die Serverantwort lokale Annahmen durch den
+              tatsächlich gespeicherten Zustand.
+            </dd>
+          </div>
+          <div>
+            <dt>Snapshot</dt>
+            <dd>
+              Der unveränderliche Spielstand, der zu einem konkreten Request
+              gehört. Spätere Eingaben ändern den Entwurf, aber nicht diesen
+              bereits versendeten Snapshot.
+            </dd>
+          </div>
+          <div>
+            <dt>Serialisierung</dt>
+            <dd>
+              Schreibvorgänge für dasselbe Match laufen nacheinander. Dadurch
+              kann eine ältere Antwort keinen gleichzeitig neu eingegebenen
+              Spielstand überschreiben.
+            </dd>
+          </div>
+          <div>
+            <dt>Deep Module</dt>
+            <dd>
+              Ein Modul mit kleiner öffentlicher Schnittstelle und viel intern
+              gekapselter Komplexität. Die Ergebnisführung exportiert zwei
+              Hooks; ihr Zustandsmodell bleibt privat.
+            </dd>
+          </div>
+          <div>
+            <dt>Charakterisierungstest</dt>
+            <dd>
+              Ein Test, der vorhandenes Verhalten festhält, bevor intern
+              umgebaut wird. Er schützt den Vertrag, ohne die alte
+              Implementierung als Ideal zu behaupten.
+            </dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <span>SGA Codebase Learning · Glossar</span>
+      <a href="architekturkarte.html">Zur Architekturkarte</a>
+    </footer>
+  </body>
+</html>
