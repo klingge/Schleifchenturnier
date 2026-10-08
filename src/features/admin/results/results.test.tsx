@@ -21,6 +21,7 @@ function match(
   return {
     id,
     court_number: 1,
+    court_id: "court-1",
     court_name_snapshot: "Platz 1",
     team_a_player_1_id: "p1",
     team_a_player_2_id: "p2",
@@ -68,6 +69,47 @@ function entry(
 }
 
 describe("useRoundResults", () => {
+  it.each(["running", "paused", "results"] as const)(
+    "opens result entry while the round is %s",
+    (state) => {
+      const { result } = renderHook(() =>
+        useRoundResults({
+          round: round("round-1", [match("match-1")], state),
+          mutate: vi.fn<ResultMutation>().mockResolvedValue(),
+        }),
+      );
+
+      expect(result.current.active).toBe(true);
+      expect(entry(result.current).editable).toBe(true);
+    },
+  );
+
+  it.each(["published", "completed"] as const)(
+    "keeps result entry closed while the round is %s",
+    async (state) => {
+      const mutate = vi.fn<ResultMutation>().mockResolvedValue();
+      const { result } = renderHook(() =>
+        useRoundResults({
+          round: round("round-1", [match("match-1")], state),
+          mutate,
+        }),
+      );
+
+      act(() => {
+        entry(result.current).change("teamA", 6);
+        entry(result.current).change("teamB", 4);
+      });
+
+      await waitFor(() =>
+        expect(entry(result.current).validation).toBe("valid"),
+      );
+      expect(result.current.active).toBe(false);
+      expect(entry(result.current).editable).toBe(false);
+      expect(result.current.completion.allowed).toBe(false);
+      expect(mutate).not.toHaveBeenCalled();
+    },
+  );
+
   it("auto-saves one valid changed result through its public interface", async () => {
     const mutate = vi.fn<ResultMutation>().mockResolvedValue();
     const currentRound = round("round-1", [match("match-1")]);

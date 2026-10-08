@@ -26,7 +26,7 @@ Die Anwendung verbindet die klare, freundliche Informationsarchitektur und die k
 | Primärtext        | `--ink`                          | `oklch(20% 0.04 255)`  |
 | Sekundärtext      | `--muted`                        | `oklch(43% 0.04 250)`  |
 
-Rot, Orange und Grün werden nur semantisch für Fehler, Warnungen und bestätigte Ergebnisse verwendet. Tennisplätze sind immer hellblau mit dunkelblauen Linien; Tennisgrün ist kein Bestandteil der visuellen Identität.
+Rot, Orange und Grün werden nur semantisch für Fehler, Warnungen und bestätigte Ergebnisse verwendet. Schematische Plätze in der Administration sind hellblau mit dunkelblauen Linien. Die persönliche öffentliche Zuordnung nutzt bewusst die vorhandene Terrakotta-Platzgrafik, damit die Spielsituation auf dem Platz unmittelbar erkennbar bleibt. Tennisgrün ist kein Bestandteil der visuellen Identität.
 
 ## Typografie
 

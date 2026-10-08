@@ -1,11 +1,23 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { getEventPolicy, validRoundPlan } from "../src/domain/event-rules";
+import {
+  checkRevision,
+  EventConflict,
+  loadEventState,
+  mutateEvent,
+} from "./event-mutations";
+import {
+  getRoundPolicy,
+  getRoundTransition,
+  roundActions,
+  type RoundState,
+} from "../src/domain/round-rules";
 import { createAuthRoutes, requireAdmin, type WorkerVariables } from "./auth";
 import { base64Url } from "./crypto";
 import { generateMatches } from "./matchmaker";
 import {
   buildHistory,
-  configurationIsLocked,
   loadEvent,
   loadPublicEvent,
   roundLockedBody,
@@ -13,12 +25,21 @@ import {
   type DbRow,
 } from "./event-data";
 import { nextPlayerEmoji } from "./player-emojis";
+import { publishRound } from "./round-publication";
+import type { EventData } from "../src/domain/tournament";
 
 const app = new Hono<{ Bindings: Env; Variables: WorkerVariables }>().basePath(
   "/api",
 );
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
+const plannedRoundCount = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable();
+const expectedRevision = z.number().int().nonnegative().optional();
 
 const eventInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -27,21 +48,40 @@ const eventInput = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   durationMinutes: z.coerce.number().int().min(1).max(240),
+  plannedRoundCount: plannedRoundCount.default(null),
 });
 const playerInput = z.object({ name: z.string().trim().min(1).max(40) });
 const courtInput = z.object({ name: z.string().trim().min(1).max(40) });
 const durationMinutes = z.coerce.number().int().min(1).max(240);
 const generateInput = z.object({
   durationMinutes: durationMinutes.optional(),
+  expectedRevision,
+});
+const manualRoundInput = z.object({
+  expectedRevision: z.number().int().nonnegative(),
+  matches: z
+    .array(
+      z.object({
+        courtId: z.string().min(1),
+        teamA: z.tuple([z.string().min(1), z.string().min(1)]),
+        teamB: z.tuple([z.string().min(1), z.string().min(1)]),
+      }),
+    )
+    .min(1)
+    .max(13),
 });
 const eventUpdateInput = z
   .object({
     status: z.enum(["active", "archived"]).optional(),
     durationMinutes: durationMinutes.optional(),
+    plannedRoundCount: plannedRoundCount.optional(),
+    expectedRevision,
   })
   .refine(
     (value) =>
-      value.status !== undefined || value.durationMinutes !== undefined,
+      value.status !== undefined ||
+      value.durationMinutes !== undefined ||
+      value.plannedRoundCount !== undefined,
   );
 
 export function resolveRoundDurationSeconds(
@@ -79,7 +119,7 @@ admin.post("/events", async (c) => {
   const timestamp = now();
   const slug = base64Url(crypto.getRandomValues(new Uint8Array(12)));
   await c.env.DB.prepare(
-    "INSERT INTO events (id, public_slug, name, event_date, default_round_duration_seconds, default_court_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO events (id, public_slug, name, event_date, default_round_duration_seconds, default_court_count, created_at, updated_at, planned_round_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       eventId,
@@ -90,6 +130,7 @@ admin.post("/events", async (c) => {
       1,
       timestamp,
       timestamp,
+      input.data.plannedRoundCount,
     )
     .run();
   return c.json(await loadEvent(c.env.DB, eventId), 201);
@@ -106,22 +147,118 @@ admin.patch("/events/:id", async (c) => {
   const body = eventUpdateInput.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success)
     return c.json({ error: "Ungültige Veranstaltungseinstellungen." }, 400);
+  const state = await loadEventState(c.env.DB, c.req.param("id"));
+  if (!state) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  checkRevision(state.event.revision, body.data.expectedRevision);
+  if (
+    (body.data.durationMinutes !== undefined &&
+      (state.policy.finished || state.policy.archived)) ||
+    (body.data.plannedRoundCount !== undefined && !state.policy.canPlan)
+  )
+    return c.json(
+      {
+        error:
+          "Diese Einstellungen können im aktuellen Turnierstatus nicht geändert werden.",
+      },
+      409,
+    );
+  if (
+    body.data.plannedRoundCount !== undefined &&
+    !validRoundPlan(body.data.plannedRoundCount, state.round?.round_number ?? 0)
+  )
+    return c.json(
+      {
+        error:
+          "Die Rundenanzahl muss über der bereits abgeschlossenen Rundenzahl liegen.",
+      },
+      400,
+    );
   const status = body.data.status ?? null;
   const archivedAt = status === "archived" ? now() : null;
   const durationSeconds =
     body.data.durationMinutes === undefined
       ? null
       : body.data.durationMinutes * 60;
-  await c.env.DB.prepare(
-    `UPDATE events
+  await mutateEvent(c.env.DB, state.event.id, state.event.revision, [
+    c.env.DB.prepare(
+      `UPDATE events
      SET status = COALESCE(?, status),
          archived_at = CASE WHEN ? IS NULL THEN archived_at ELSE ? END,
          default_round_duration_seconds = COALESCE(?, default_round_duration_seconds),
+         planned_round_count = CASE WHEN ? THEN ? ELSE planned_round_count END,
          updated_at = ?
      WHERE id = ?`,
+    ).bind(
+      status,
+      status,
+      archivedAt,
+      durationSeconds,
+      Number(body.data.plannedRoundCount !== undefined),
+      body.data.plannedRoundCount ?? null,
+      now(),
+      c.req.param("id"),
+    ),
+  ]);
+  return c.json({ ok: true });
+});
+
+admin.post("/events/:id/finish", async (c) => {
+  const input = z
+    .object({ expectedRevision })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!input.success)
+    return c.json({ error: "Ungültige Abschlussanfrage." }, 400);
+  const state = await loadEventState(c.env.DB, c.req.param("id"));
+  if (!state) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  checkRevision(state.event.revision, input.data.expectedRevision);
+  if (!state.policy.canFinish)
+    return c.json(
+      {
+        error:
+          "Das Turnier kann erst nach einer vollständig abgeschlossenen Runde beendet werden.",
+      },
+      409,
+    );
+  const timestamp = now();
+  await mutateEvent(c.env.DB, state.event.id, state.event.revision, [
+    c.env.DB.prepare(
+      "UPDATE events SET finished_at = ?, updated_at = ? WHERE id = ?",
+    ).bind(timestamp, timestamp, state.event.id),
+  ]);
+  return c.json({ ok: true });
+});
+
+admin.post("/events/:id/resume", async (c) => {
+  const input = z
+    .object({ plannedRoundCount, expectedRevision })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!input.success)
+    return c.json({ error: "Bitte die weitere Rundenplanung prüfen." }, 400);
+  const state = await loadEventState(c.env.DB, c.req.param("id"));
+  if (!state) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  checkRevision(state.event.revision, input.data.expectedRevision);
+  if (!state.policy.canResume)
+    return c.json(
+      { error: "Dieses Turnier kann derzeit nicht fortgesetzt werden." },
+      409,
+    );
+  if (
+    !validRoundPlan(
+      input.data.plannedRoundCount,
+      state.round?.round_number ?? 0,
+    )
   )
-    .bind(status, status, archivedAt, durationSeconds, now(), c.req.param("id"))
-    .run();
+    return c.json(
+      {
+        error: "Plane mindestens eine weitere Runde oder wähle Selbst beenden.",
+      },
+      400,
+    );
+  await mutateEvent(c.env.DB, state.event.id, state.event.revision, [
+    c.env.DB.prepare(
+      "UPDATE events SET finished_at = NULL, planned_round_count = ?, updated_at = ? WHERE id = ?",
+    ).bind(input.data.plannedRoundCount, now(), state.event.id),
+  ]);
   return c.json({ ok: true });
 });
 
@@ -150,7 +287,10 @@ admin.post("/events/:id/players", async (c) => {
       { error: "Bitte einen Namen mit höchstens 40 Zeichen eingeben." },
       400,
     );
-  if (await configurationIsLocked(c.env.DB, c.req.param("id")))
+  const configuration = await loadEventState(c.env.DB, c.req.param("id"));
+  if (!configuration)
+    return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  if (configuration.policy.configurationLocked)
     return c.json(roundLockedBody, 409);
   const used = new Set(
     (
@@ -163,11 +303,23 @@ admin.post("/events/:id/players", async (c) => {
   );
   const emoji = nextPlayerEmoji(used);
   const timestamp = now();
-  await c.env.DB.prepare(
-    "INSERT INTO players (id, event_id, display_name, emoji, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-  )
-    .bind(id(), c.req.param("id"), input.data.name, emoji, timestamp, timestamp)
-    .run();
+  await mutateEvent(
+    c.env.DB,
+    configuration.event.id,
+    configuration.event.revision,
+    [
+      c.env.DB.prepare(
+        "INSERT INTO players (id, event_id, display_name, emoji, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      ).bind(
+        id(),
+        c.req.param("id"),
+        input.data.name,
+        emoji,
+        timestamp,
+        timestamp,
+      ),
+    ],
+  );
   return c.json(await loadEvent(c.env.DB, c.req.param("id")), 201);
 });
 
@@ -186,18 +338,26 @@ admin.patch("/players/:id", async (c) => {
     .bind(c.req.param("id"))
     .first<{ event_id: string }>();
   if (!player) return c.json({ error: "Spieler nicht gefunden." }, 404);
-  if (await configurationIsLocked(c.env.DB, player.event_id))
+  const configuration = await loadEventState(c.env.DB, player.event_id);
+  if (!configuration)
+    return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  if (configuration.policy.configurationLocked)
     return c.json(roundLockedBody, 409);
-  await c.env.DB.prepare(
-    "UPDATE players SET display_name = COALESCE(?, display_name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
-  )
-    .bind(
-      input.data.name ?? null,
-      input.data.active === undefined ? null : Number(input.data.active),
-      now(),
-      c.req.param("id"),
-    )
-    .run();
+  await mutateEvent(
+    c.env.DB,
+    configuration.event.id,
+    configuration.event.revision,
+    [
+      c.env.DB.prepare(
+        "UPDATE players SET display_name = COALESCE(?, display_name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
+      ).bind(
+        input.data.name ?? null,
+        input.data.active === undefined ? null : Number(input.data.active),
+        now(),
+        c.req.param("id"),
+      ),
+    ],
+  );
   return c.json(await loadEvent(c.env.DB, player.event_id));
 });
 
@@ -213,7 +373,10 @@ admin.post("/events/:id/courts", async (c) => {
     .bind(eventId)
     .first();
   if (!event) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
-  if (await configurationIsLocked(c.env.DB, eventId))
+  const configuration = await loadEventState(c.env.DB, eventId);
+  if (!configuration)
+    return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  if (configuration.policy.configurationLocked)
     return c.json(roundLockedBody, 409);
   const existing = await rows(
     c.env.DB.prepare(
@@ -233,18 +396,23 @@ admin.post("/events/:id/courts", async (c) => {
   if (duplicate)
     return c.json({ error: "Dieser Platzname ist bereits vergeben." }, 409);
   const timestamp = now();
-  await c.env.DB.prepare(
-    "INSERT INTO courts (id, event_id, name, position, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-  )
-    .bind(
-      id(),
-      eventId,
-      input.data.name,
-      existing.length + 1,
-      timestamp,
-      timestamp,
-    )
-    .run();
+  await mutateEvent(
+    c.env.DB,
+    configuration.event.id,
+    configuration.event.revision,
+    [
+      c.env.DB.prepare(
+        "INSERT INTO courts (id, event_id, name, position, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+      ).bind(
+        id(),
+        eventId,
+        input.data.name,
+        existing.length + 1,
+        timestamp,
+        timestamp,
+      ),
+    ],
+  );
   return c.json(await loadEvent(c.env.DB, eventId), 201);
 });
 
@@ -264,7 +432,10 @@ admin.patch("/courts/:id", async (c) => {
     .bind(c.req.param("id"))
     .first<{ id: string; event_id: string }>();
   if (!court) return c.json({ error: "Platz nicht gefunden." }, 404);
-  if (await configurationIsLocked(c.env.DB, court.event_id))
+  const configuration = await loadEventState(c.env.DB, court.event_id);
+  if (!configuration)
+    return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  if (configuration.policy.configurationLocked)
     return c.json(roundLockedBody, 409);
   if (input.data.name !== undefined) {
     const duplicate = await c.env.DB.prepare(
@@ -275,16 +446,21 @@ admin.patch("/courts/:id", async (c) => {
     if (duplicate)
       return c.json({ error: "Dieser Platzname ist bereits vergeben." }, 409);
   }
-  await c.env.DB.prepare(
-    "UPDATE courts SET name = COALESCE(?, name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
-  )
-    .bind(
-      input.data.name ?? null,
-      input.data.active === undefined ? null : Number(input.data.active),
-      now(),
-      court.id,
-    )
-    .run();
+  await mutateEvent(
+    c.env.DB,
+    configuration.event.id,
+    configuration.event.revision,
+    [
+      c.env.DB.prepare(
+        "UPDATE courts SET name = COALESCE(?, name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
+      ).bind(
+        input.data.name ?? null,
+        input.data.active === undefined ? null : Number(input.data.active),
+        now(),
+        court.id,
+      ),
+    ],
+  );
   return c.json(await loadEvent(c.env.DB, court.event_id));
 });
 
@@ -306,19 +482,23 @@ admin.post("/events/:id/generate", async (c) => {
   const eventId = c.req.param("id");
   const data = await loadEvent(c.env.DB, eventId);
   if (!data) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  const tournament = data as unknown as EventData;
   const roundDurationSeconds = resolveRoundDurationSeconds(
     input.data.durationMinutes,
-    Number(data.event.default_round_duration_seconds),
+    tournament.event.default_round_duration_seconds,
   );
-  const current = data.currentRound;
-  if (current && !["completed", "published"].includes(String(current.state)))
+  const current = tournament.currentRound;
+  checkRevision(tournament.event.revision, input.data.expectedRevision);
+  const eventPolicy = getEventPolicy(tournament.event, current);
+  if (!eventPolicy.canGenerate)
     return c.json(
-      { error: "Die laufende Runde muss zuerst abgeschlossen werden." },
+      {
+        error:
+          "Im aktuellen Turnierstatus kann keine Runde veröffentlicht werden.",
+      },
       409,
     );
-  const active = data.leaderboard.filter(
-    (player) => Number(player.active) === 1,
-  );
+  const active = tournament.leaderboard.filter((player) => player.active === 1);
   if (active.length < 4)
     return c.json(
       {
@@ -326,9 +506,7 @@ admin.post("/events/:id/generate", async (c) => {
       },
       400,
     );
-  const activeCourts = data.courts.filter(
-    (court) => Number(court.active) === 1,
-  );
+  const activeCourts = tournament.courts.filter((court) => court.active === 1);
   if (activeCourts.length === 0)
     return c.json(
       { error: "Für eine Auslosung muss mindestens ein Platz aktiv sein." },
@@ -345,72 +523,20 @@ admin.post("/events/:id/generate", async (c) => {
     await buildHistory(data),
     seed,
   );
-  const timestamp = now();
-  const roundId = id();
-  const roundNumber =
-    current?.state === "published"
-      ? Number(current.round_number)
-      : Number(current?.round_number ?? 0) + 1;
-  const statements: D1PreparedStatement[] = [];
-  if (current?.state === "published")
-    statements.push(
-      c.env.DB.prepare(
-        "UPDATE rounds SET state = 'discarded', discarded_at = ? WHERE id = ?",
-      ).bind(timestamp, current.id),
-    );
-  if (current?.state === "completed")
-    statements.push(
-      c.env.DB.prepare(
-        "UPDATE matches SET result_locked_at = ? WHERE round_id = ?",
-      ).bind(timestamp, current.id),
-    );
-  statements.push(
-    c.env.DB.prepare(
-      "INSERT INTO rounds (id, event_id, round_number, state, court_count, duration_seconds, published_at, matchmaking_seed) VALUES (?, ?, ?, 'published', ?, ?, ?, ?)",
-    ).bind(
-      roundId,
-      eventId,
-      roundNumber,
-      activeCourts.length,
-      roundDurationSeconds,
-      timestamp,
-      seed,
-    ),
-  );
-  for (const match of result.matches) {
-    const court = activeCourts[match.court - 1];
-    statements.push(
-      c.env.DB.prepare(
-        "INSERT INTO matches (id, round_id, court_number, court_id, court_name_snapshot, team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(
-        id(),
-        roundId,
-        match.court,
-        court.id,
-        court.name,
-        ...match.teamA,
-        ...match.teamB,
-      ),
-    );
-  }
-  for (const player of active)
-    statements.push(
-      c.env.DB.prepare(
-        "INSERT INTO round_participation (round_id, player_id, status) VALUES (?, ?, ?)",
-      ).bind(
-        roundId,
-        player.id,
-        result.sittingOut.includes(String(player.id))
-          ? "sitting_out"
-          : "playing",
-      ),
-    );
-  statements.push(
-    c.env.DB.prepare(
-      "UPDATE events SET status = 'active', updated_at = ? WHERE id = ?",
-    ).bind(timestamp, eventId),
-  );
-  await c.env.DB.batch(statements);
+  await publishRound({
+    db: c.env.DB,
+    eventId,
+    revision: tournament.event.revision,
+    current,
+    durationSeconds: roundDurationSeconds,
+    assignments: result.matches.map((match) => ({
+      court: activeCourts[match.court - 1],
+      teamA: match.teamA,
+      teamB: match.teamB,
+    })),
+    activePlayerIds: active.map((player) => player.id),
+    matchmakingSeed: seed,
+  });
   return c.json(
     {
       ...(await loadEvent(c.env.DB, eventId)),
@@ -423,55 +549,135 @@ admin.post("/events/:id/generate", async (c) => {
   );
 });
 
+admin.post("/events/:id/rounds/manual", async (c) => {
+  const input = manualRoundInput.safeParse(
+    await c.req.json().catch(() => ({})),
+  );
+  if (!input.success)
+    return c.json(
+      { error: "Bitte mindestens einen Platz vollständig besetzen." },
+      400,
+    );
+  const eventId = c.req.param("id");
+  const data = await loadEvent(c.env.DB, eventId);
+  if (!data) return c.json({ error: "Veranstaltung nicht gefunden." }, 404);
+  const tournament = data as unknown as EventData;
+  checkRevision(tournament.event.revision, input.data.expectedRevision);
+  const current = tournament.currentRound;
+  if (!getEventPolicy(tournament.event, current).canGenerate)
+    return c.json(
+      {
+        error:
+          "Im aktuellen Turnierstatus kann keine Runde veröffentlicht werden.",
+      },
+      409,
+    );
+
+  const activePlayers = new Set(
+    tournament.players
+      .filter((player) => player.active)
+      .map((player) => player.id),
+  );
+  const activeCourts = new Map(
+    tournament.courts
+      .filter((court) => court.active)
+      .map((court) => [court.id, court]),
+  );
+  const chosenPlayers = new Set<string>();
+  const chosenCourts = new Set<string>();
+  for (const match of input.data.matches) {
+    if (!activeCourts.has(match.courtId) || chosenCourts.has(match.courtId))
+      return c.json(
+        { error: "Ein Platz ist ungültig oder doppelt belegt." },
+        400,
+      );
+    chosenCourts.add(match.courtId);
+    for (const playerId of [...match.teamA, ...match.teamB]) {
+      if (!activePlayers.has(playerId) || chosenPlayers.has(playerId))
+        return c.json(
+          { error: "Ein Teilnehmer ist ungültig oder mehrfach eingeteilt." },
+          400,
+        );
+      chosenPlayers.add(playerId);
+    }
+  }
+  await publishRound({
+    db: c.env.DB,
+    eventId,
+    revision: tournament.event.revision,
+    current,
+    durationSeconds:
+      current?.state === "published"
+        ? current.duration_seconds
+        : tournament.event.default_round_duration_seconds,
+    assignments: input.data.matches.map((match) => ({
+      court: activeCourts.get(match.courtId)!,
+      teamA: match.teamA,
+      teamB: match.teamB,
+    })),
+    activePlayerIds: [...activePlayers],
+    matchmakingSeed: 0,
+  });
+  return c.json(await loadEvent(c.env.DB, eventId), 201);
+});
+
 admin.post("/rounds/:id/action", async (c) => {
   const input = z
-    .object({ action: z.enum(["start", "pause", "resume", "end", "skip"]) })
+    .object({ action: z.enum(roundActions), expectedRevision })
     .safeParse(await c.req.json().catch(() => ({})));
   if (!input.success) return c.json({ error: "Ungültige Rundenaktion." }, 400);
+  const owner = await c.env.DB.prepare(
+    "SELECT event_id FROM rounds WHERE id = ?",
+  )
+    .bind(c.req.param("id"))
+    .first<{ event_id: string }>();
+  if (!owner) return c.json({ error: "Runde nicht gefunden." }, 404);
+  const state = await loadEventState(c.env.DB, owner.event_id);
+  if (!state || state.policy.finished || state.policy.archived)
+    return c.json({ error: "Das Turnier ist geschlossen." }, 409);
+  checkRevision(state.event.revision, input.data.expectedRevision);
   const round = await c.env.DB.prepare("SELECT * FROM rounds WHERE id = ?")
     .bind(c.req.param("id"))
     .first<DbRow>();
   if (!round) return c.json({ error: "Runde nicht gefunden." }, 404);
-  const timestamp = now();
-  if (input.data.action === "start" && round.state === "published") {
-    const expires = new Date(
-      Date.now() + Number(round.duration_seconds) * 1000,
-    ).toISOString();
-    await c.env.DB.prepare(
-      "UPDATE rounds SET state = 'running', started_at = ?, expires_at = ? WHERE id = ?",
-    )
-      .bind(timestamp, expires, round.id)
-      .run();
-  } else if (input.data.action === "pause" && round.state === "running") {
-    await c.env.DB.prepare(
-      "UPDATE rounds SET state = 'paused', paused_at = ? WHERE id = ?",
-    )
-      .bind(timestamp, round.id)
-      .run();
-  } else if (input.data.action === "resume" && round.state === "paused") {
-    const pauseMs = Date.now() - new Date(String(round.paused_at)).getTime();
-    const expires = new Date(
-      new Date(String(round.expires_at)).getTime() + pauseMs,
-    ).toISOString();
-    await c.env.DB.prepare(
-      "UPDATE rounds SET state = 'running', paused_at = NULL, accumulated_paused_seconds = accumulated_paused_seconds + ?, expires_at = ? WHERE id = ?",
-    )
-      .bind(Math.round(pauseMs / 1000), expires, round.id)
-      .run();
-  } else if (
-    ["end", "skip"].includes(input.data.action) &&
-    ["running", "paused"].includes(String(round.state))
-  ) {
-    await c.env.DB.prepare(
-      "UPDATE rounds SET state = 'results', expires_at = ? WHERE id = ?",
-    )
-      .bind(timestamp, round.id)
-      .run();
-  } else
+  const nextState = getRoundTransition(
+    String(round.state) as RoundState,
+    input.data.action,
+  );
+  if (!nextState)
     return c.json(
       { error: "Diese Aktion ist im aktuellen Rundenstatus nicht möglich." },
       409,
     );
+  const timestamp = now();
+  let statement: D1PreparedStatement;
+  if (input.data.action === "start") {
+    const expires = new Date(
+      Date.now() + Number(round.duration_seconds) * 1000,
+    ).toISOString();
+    statement = c.env.DB.prepare(
+      "UPDATE rounds SET state = 'running', started_at = ?, expires_at = ? WHERE id = ?",
+    ).bind(timestamp, expires, round.id);
+  } else if (input.data.action === "pause") {
+    statement = c.env.DB.prepare(
+      "UPDATE rounds SET state = 'paused', paused_at = ? WHERE id = ?",
+    ).bind(timestamp, round.id);
+  } else if (input.data.action === "resume") {
+    const pauseMs = Date.now() - new Date(String(round.paused_at)).getTime();
+    const expires = new Date(
+      new Date(String(round.expires_at)).getTime() + pauseMs,
+    ).toISOString();
+    statement = c.env.DB.prepare(
+      "UPDATE rounds SET state = 'running', paused_at = NULL, accumulated_paused_seconds = accumulated_paused_seconds + ?, expires_at = ? WHERE id = ?",
+    ).bind(Math.round(pauseMs / 1000), expires, round.id);
+  } else {
+    statement = c.env.DB.prepare(
+      "UPDATE rounds SET state = 'results', expires_at = ? WHERE id = ?",
+    ).bind(timestamp, round.id);
+  }
+  await mutateEvent(c.env.DB, owner.event_id, state.event.revision, [
+    statement,
+  ]);
   return c.json({ ok: true });
 });
 
@@ -491,9 +697,9 @@ admin.put("/matches/:id/result", async (c) => {
     "SELECT rounds.state FROM matches JOIN rounds ON rounds.id = matches.round_id WHERE matches.id = ?",
   )
     .bind(c.req.param("id"))
-    .first<{ state: string }>();
+    .first<{ state: RoundState }>();
   if (!match) return c.json({ error: "Match nicht gefunden." }, 404);
-  if (!["running", "paused", "results", "completed"].includes(match.state))
+  if (getRoundPolicy(match.state).resultAccess === "closed")
     return c.json(
       {
         error:
@@ -511,17 +717,27 @@ admin.put("/matches/:id/result", async (c) => {
 
 admin.post("/rounds/:id/complete", async (c) => {
   const input = z
-    .object({ allowMissing: z.boolean().default(false) })
+    .object({ allowMissing: z.boolean().default(false), expectedRevision })
     .safeParse(await c.req.json().catch(() => ({})));
   if (!input.success)
     return c.json({ error: "Ung\u00fcltige Abschlussanfrage." }, 400);
 
   const roundId = c.req.param("id");
+  const owner = await c.env.DB.prepare(
+    "SELECT event_id FROM rounds WHERE id = ?",
+  )
+    .bind(roundId)
+    .first<{ event_id: string }>();
+  if (!owner) return c.json({ error: "Runde nicht gefunden." }, 404);
+  const state = await loadEventState(c.env.DB, owner.event_id);
+  if (!state || state.policy.finished || state.policy.archived)
+    return c.json({ error: "Das Turnier ist geschlossen." }, 409);
+  checkRevision(state.event.revision, input.data.expectedRevision);
   const round = await c.env.DB.prepare("SELECT state FROM rounds WHERE id = ?")
     .bind(roundId)
-    .first<{ state: string }>();
+    .first<{ state: RoundState }>();
   if (!round) return c.json({ error: "Runde nicht gefunden." }, 404);
-  if (!["running", "paused", "results"].includes(round.state))
+  if (!getRoundPolicy(round.state).canComplete)
     return c.json(
       {
         error:
@@ -541,10 +757,15 @@ admin.post("/rounds/:id/complete", async (c) => {
       409,
     );
   const timestamp = now();
-  await c.env.DB.batch([
+  await mutateEvent(c.env.DB, owner.event_id, state.event.revision, [
     c.env.DB.prepare(
-      "UPDATE matches SET team_a_games = 0, team_b_games = 0, result_type = 'missing' WHERE round_id = ? AND result_type = 'pending'",
-    ).bind(roundId),
+      "UPDATE events SET finished_at = CASE WHEN ? THEN ? ELSE finished_at END, updated_at = ? WHERE id = ?",
+    ).bind(
+      Number(state.policy.finalRound),
+      timestamp,
+      timestamp,
+      owner.event_id,
+    ),
     c.env.DB.prepare(
       "UPDATE rounds SET state = 'completed', completed_at = ? WHERE id = ? AND state IN ('running', 'paused', 'results')",
     ).bind(timestamp, roundId),
@@ -562,6 +783,8 @@ app.get("/public/events/:slug", async (c) => {
 });
 
 app.onError((error, c) => {
+  if (error instanceof EventConflict)
+    return c.json({ error: error.message, code: "event_conflict" }, 409);
   console.error(
     JSON.stringify({
       message: "Unhandled request error",

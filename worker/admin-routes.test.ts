@@ -12,20 +12,35 @@ function mockDb(
   run: (sql: string, bindings: unknown[]) => unknown = () => ({
     success: true,
   }),
-  batch: (statements: unknown[]) => unknown = () => [],
+  batch?: (statements: unknown[]) => unknown,
 ) {
   return {
     prepare(sql: string) {
       return {
         bind(...bindings: unknown[]) {
           return {
-            first: async () => first(sql),
+            first: async () => {
+              if (sql.includes("SELECT id, status, planned_round_count"))
+                return {
+                  id: "event-1",
+                  revision: 0,
+                  status: "active",
+                  planned_round_count: null,
+                  finished_at: null,
+                };
+              if (sql === "SELECT event_id FROM rounds WHERE id = ?")
+                return { event_id: "event-1" };
+              return first(sql);
+            },
             run: async () => run(sql, bindings),
           };
         },
       };
     },
-    batch: async (statements: unknown[]) => batch(statements),
+    batch: async (statements: { run(): Promise<unknown> }[]) =>
+      batch
+        ? batch(statements)
+        : Promise.all(statements.map((statement) => statement.run())),
   } as unknown as D1Database;
 }
 
@@ -142,7 +157,7 @@ describe("admin configuration routes", () => {
     const env: TestEnv = {
       ...baseEnv,
       DB: mockDb((sql) =>
-        sql.includes("SELECT state FROM rounds") ? { state: "running" } : null,
+        sql.includes("SELECT state") ? { state: "running" } : null,
       ),
     };
 
@@ -164,8 +179,7 @@ describe("admin configuration routes", () => {
       ...baseEnv,
       DB: mockDb((sql) => {
         if (sql.includes("SELECT id FROM events")) return { id: "event-1" };
-        if (sql.includes("SELECT state FROM rounds"))
-          return { state: "published" };
+        if (sql.includes("SELECT state")) return { state: "published" };
         return null;
       }),
     };
@@ -189,8 +203,7 @@ describe("admin configuration routes", () => {
       DB: mockDb((sql) => {
         if (sql.includes("SELECT id, event_id FROM courts"))
           return { id: "court-1", event_id: "event-1" };
-        if (sql.includes("SELECT state FROM rounds"))
-          return { state: "results" };
+        if (sql.includes("SELECT state")) return { state: "results" };
         return null;
       }),
     };
@@ -304,7 +317,7 @@ describe("admin configuration routes", () => {
         ...baseEnv,
         DB: mockDb(
           (sql) => {
-            if (sql.includes("SELECT state FROM rounds")) return { state };
+            if (sql.includes("SELECT state")) return { state };
             if (sql.includes("SELECT COUNT(*)")) return { count: 0 };
             return null;
           },
@@ -334,8 +347,7 @@ describe("admin configuration routes", () => {
       ...baseEnv,
       DB: mockDb(
         (sql) => {
-          if (sql.includes("SELECT state FROM rounds"))
-            return { state: "running" };
+          if (sql.includes("SELECT state")) return { state: "running" };
           if (sql.includes("SELECT COUNT(*)")) return { count: 1 };
           return null;
         },
@@ -367,10 +379,7 @@ describe("admin configuration routes", () => {
     const env: TestEnv = {
       ...baseEnv,
       DB: mockDb(
-        (sql) =>
-          sql.includes("SELECT state FROM rounds")
-            ? { state: "published" }
-            : null,
+        (sql) => (sql.includes("SELECT state") ? { state: "published" } : null),
         undefined,
         () => {
           batched = true;

@@ -41,6 +41,8 @@ import { EventAdmin } from "@/features/admin/EventAdmin";
 import { DeleteEventDialog } from "@/features/admin/DeleteEventDialog";
 import { PublicEvent } from "@/features/public/PublicEvent";
 import { api, clearCsrfToken, setCsrfToken } from "@/lib/api";
+import { RoundPlanFields } from "@/features/admin/RoundPlanFields";
+import { validRoundPlan } from "@/domain/event-rules";
 import { type EventData, type EventRow } from "@/domain/tournament";
 
 function Login({ done }: { done: () => void }) {
@@ -66,8 +68,8 @@ function Login({ done }: { done: () => void }) {
           <UiBadge variant="secondary">Turnierleitung</UiBadge>
           <h1>SGA Schleifchenturnier</h1>
           <p>
-            Spieler eintragen, faire Doppel auslosen und Ergebnisse direkt
-            festhalten.
+            Spieler eintragen, Doppel auslosen oder selbst zusammenstellen und
+            Ergebnisse direkt festhalten.
           </p>
           <p className="login-note">
             Eine zentrale Oberfläche für den gesamten Turniertag.
@@ -98,6 +100,8 @@ function Dashboard() {
   const nav = useNavigate();
   const [items, setItems] = useState<EventRow[] | null>(null);
   const [open, setOpen] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const load = () =>
     api<{ events: EventRow[] }>("/admin/events")
@@ -108,14 +112,21 @@ function Dashboard() {
   }, []);
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (creating || !validRoundPlan(count)) return;
+    setCreating(true);
     try {
       const x = await api<EventData>("/admin/events", {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
+        body: JSON.stringify({
+          ...Object.fromEntries(new FormData(e.currentTarget)),
+          plannedRoundCount: count,
+        }),
       });
       void nav(`/admin/events/${x.event.id}`);
     } catch (x) {
       setError((x as Error).message);
+    } finally {
+      setCreating(false);
     }
   }
   return (
@@ -125,13 +136,24 @@ function Dashboard() {
           <p className="kicker">Veranstaltungen</p>
           <h1>Turnierübersicht</h1>
         </div>
-        <UiDialog open={open} onOpenChange={setOpen}>
+        <UiDialog
+          open={open}
+          onOpenChange={(next) => {
+            if (!creating) {
+              setOpen(next);
+              if (next) {
+                setCount(null);
+                setError("");
+              }
+            }
+          }}
+        >
           <UiDialogTrigger asChild>
             <UiButton size="lg">
               <Plus /> Veranstaltung
             </UiButton>
           </UiDialogTrigger>
-          <UiDialogContent className="sm:max-w-[520px]">
+          <UiDialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-[520px]">
             <UiDialogHeader>
               <UiDialogTitle>Neue Veranstaltung</UiDialogTitle>
             </UiDialogHeader>
@@ -151,13 +173,28 @@ function Dashboard() {
                   required
                 />
               </label>
+              <RoundPlanFields
+                value={count}
+                onChange={setCount}
+                disabled={creating}
+              />
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
               <UiDialogFooter>
                 <UiDialogClose asChild>
-                  <UiButton type="button" variant="outline">
+                  <UiButton type="button" variant="outline" disabled={creating}>
                     Abbrechen
                   </UiButton>
                 </UiDialogClose>
-                <UiButton type="submit">Erstellen</UiButton>
+                <UiButton
+                  type="submit"
+                  disabled={creating || !validRoundPlan(count)}
+                >
+                  {creating ? "Wird erstellt…" : "Erstellen"}
+                </UiButton>
               </UiDialogFooter>
             </form>
           </UiDialogContent>
@@ -211,9 +248,11 @@ function Dashboard() {
                 >
                   {x.status === "archived"
                     ? "Archiviert"
-                    : x.status === "lobby"
-                      ? "Lobby"
-                      : "Aktiv"}
+                    : x.finished_at
+                      ? "Beendet"
+                      : x.status === "lobby"
+                        ? "Lobby"
+                        : "Aktiv"}
                 </UiBadge>
               </RouterLink>
               <UiDropdownMenu>

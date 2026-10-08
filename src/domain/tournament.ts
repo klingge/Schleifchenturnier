@@ -1,3 +1,5 @@
+import type { VisibleRoundState } from "./round-rules";
+
 export type Player = {
   id: string;
   display_name: string;
@@ -19,6 +21,7 @@ export type Court = {
 export type Match = {
   id: string;
   court_number: number;
+  court_id: string | null;
   court_name_snapshot: string | null;
   team_a_player_1_id: string;
   team_a_player_2_id: string;
@@ -32,7 +35,7 @@ export type Match = {
 export type Round = {
   id: string;
   round_number: number;
-  state: "published" | "running" | "paused" | "results" | "completed";
+  state: VisibleRoundState;
   duration_seconds: number;
   expires_at: string | null;
   paused_at?: string | null;
@@ -48,6 +51,9 @@ export type EventRow = {
   default_round_duration_seconds: number;
   court_count?: number;
   status: string;
+  planned_round_count: number | null;
+  finished_at: string | null;
+  revision: number;
 };
 
 export type EventData = {

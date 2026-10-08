@@ -13,6 +13,8 @@ Eine deutschsprachige Full-Stack-Anwendung zur Durchführung eines zeitgesteuert
 ## Was das Projekt zeigt
 
 - komplette Turnierverwaltung von der Veranstaltung bis zur Ergebnis-Historie
+- feste Rundenanzahl oder manuelles Turnierende, mit öffentlicher Endwertung und späterer Fortsetzung
+- manuelle Rundenaufstellung mit frei gewählten Doppeln, Plätzen und Aussetzenden; veröffentlichte Paarungen sind vor dem Start bearbeitbar
 - deterministisches Matchmaking mit fairer Aussetzerverteilung und Wiederholungsvermeidung
 - responsive Teilnehmeransicht mit persönlicher Platz-, Partner- und Gegnerzuordnung
 - Worker-API mit validierten Nutzdaten, signierten Sitzungen und CSRF-Schutz
