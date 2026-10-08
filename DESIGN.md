@@ -69,6 +69,10 @@ Das Raster verwendet ausschließlich `4, 8, 12, 16, 24, 32 und 48px`.
 - erlaubte Eigenschaften: `transform`, `opacity`, `background-color`, `border-color`
 - keine orchestrierten Seitenanimationen, kein dekoratives Scrollen
 - `prefers-reduced-motion: reduce` verkürzt Animationen und Übergänge auf unmittelbare Zustandswechsel
+- Auslosung als seltener Turniermoment: maximal `600ms` Emoji-Mischen während der Anfrage. Danach gleiten die vollständigen Admin-Platzkarten jeweils `650ms` von `48px` unterhalb ihrer Position hinein, vollständig nacheinander mit `Kartenindex × 650ms` Startversatz. Öffentlich gleitet die einzelne persönliche Platzkarte `650ms` hinein. Easing für diese Karten: `cubic-bezier(0.25, 1, 0.5, 1)`.
+- Der Platz für alle Karten wird sofort reserviert, Folge-Karten bleiben bis zu ihrem Auftritt ausgeblendet. Aktionen sind unabhängig davon sofort verfügbar; beim Rundenstart erscheinen alle Karten unmittelbar. Erstbesuch, Namenswechsel und unveränderte Abrufe wiederholen die Enthüllung nicht; versteckte Tabs und reduzierte Bewegung übernehmen den Zustand unmittelbar.
+- Rundenstart: einmaliger `360ms` Impuls am vorhandenen Rundensymbol beim beobachteten Wechsel derselben Runde von veröffentlicht zu laufend. Fortsetzen nach einer Pause bleibt ruhig. Eine neue Zuordnung im selben Abruf erhält ausschließlich ihre Enthüllung.
+- Turnierabschluss: einmaliger `700ms` Pokalakzent in beiden Ansichten beim neu beobachteten Abschluss, mit Vorrang vor Auslosung und Start. Der Admin-Pokal ersetzt dann das Häkchen im Veranstaltungskopf. Erstes Laden einer bereits abgeschlossenen Veranstaltung bleibt ruhig. Zeitgesteuerte Bereinigung funktioniert unabhängig von Animationsereignissen.
 
 ## Responsive Regeln
 
