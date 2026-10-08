@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import type { EventData } from "@/domain/tournament";
 import { api } from "@/lib/api";
@@ -102,12 +109,152 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(api).mockReset();
   Element.prototype.scrollIntoView = vi.fn();
-  window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("public event refresh behavior", () => {
+  const enableMotion = () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+  };
+  const nextRound = (
+    id: string,
+    state: "published" | "running" = "published",
+  ): EventData => ({
+    ...eventData,
+    currentRound: { ...eventData.currentRound!, id, state },
+  });
+  async function openAssignment() {
+    vi.mocked(api).mockResolvedValueOnce(eventData);
+    renderPublicEvent();
+    await screen.findByRole("heading", { name: "Sommerfest" });
+    fireEvent.click(screen.getByRole("button", { name: "Mara" }));
+    return document.querySelector(".public-court-card")!;
+  }
+  async function refreshWith(next: EventData) {
+    vi.mocked(api).mockResolvedValueOnce(next);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aktualisieren" }));
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Aktualisieren",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+  }
+
+  it("reveals a new round once without remounting names or replaying unchanged data", async () => {
+    enableMotion();
+    const board = await openAssignment();
+    const nameSwitch = screen.getByRole("button", { name: "Name wechseln" });
+    nameSwitch.focus();
+    expect(board.classList.contains("is-assignment-reveal")).toBe(false);
+    await refreshWith(nextRound("redrawn")); // same round number, new publication
+    expect(board.classList.contains("is-assignment-reveal")).toBe(true);
+    expect(document.querySelector(".public-court-card")).toBe(board);
+    expect(document.activeElement).toBe(nameSwitch);
+    expect(screen.getByText("Center Court")).toBeTruthy();
+    await waitFor(() =>
+      expect(board.classList.contains("is-assignment-reveal")).toBe(false),
+    );
+    await refreshWith(nextRound("redrawn", "running"));
+    expect(board.classList.contains("is-assignment-reveal")).toBe(false);
+  });
+
+  it("reveals new data received by automatic polling", async () => {
+    enableMotion();
+    const interval = vi.spyOn(window, "setInterval");
+    const board = await openAssignment();
+    vi.mocked(api).mockResolvedValueOnce(nextRound("polled"));
+    await act(async () => {
+      const [poll, delay] = interval.mock.calls.at(-1)!;
+      expect(delay).toBe(10_000);
+      (poll as () => void)();
+    });
+    expect(board.classList.contains("is-assignment-reveal")).toBe(true);
+    await waitFor(() =>
+      expect(board.classList.contains("is-assignment-reveal")).toBe(false),
+    );
+  });
+
+  it("does not replay a hidden-tab publication when the tab becomes visible", async () => {
+    enableMotion();
+    const board = await openAssignment();
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    await refreshWith(nextRound("background"));
+    expect(board.classList.contains("is-assignment-reveal")).toBe(false);
+    visibility.mockReturnValue("visible");
+    fireEvent(document, new Event("visibilitychange"));
+    await refreshWith(nextRound("background"));
+    expect(board.classList.contains("is-assignment-reveal")).toBe(false);
+  });
+
+  it("uses immediate updates with reduced motion and when choosing another name", async () => {
+    const board = await openAssignment();
+    await refreshWith(nextRound("reduced"));
+    expect(board.classList.contains("is-assignment-reveal")).toBe(false);
+    enableMotion();
+    fireEvent.click(screen.getByRole("button", { name: "Name wechseln" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nele" }));
+    expect(document.querySelector(".is-assignment-reveal")).toBeNull();
+  });
+
+  it("gives sitting-out players a short reveal and gives completion priority", async () => {
+    enableMotion();
+    await openAssignment();
+    const rest = nextRound("rest");
+    rest.currentRound!.matches = [];
+    rest.currentRound!.sitting_out_player_ids = ["mara"];
+    await refreshWith(rest);
+    expect(
+      document.querySelector(".public-state.rest.is-assignment-reveal"),
+    ).toBeTruthy();
+    const finished = nextRound("final");
+    finished.event = { ...finished.event, finished_at: "2026-10-08T12:00:00Z" };
+    await refreshWith(finished);
+    expect(document.querySelector(".is-assignment-reveal")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Turnier beendet" }),
+    ).toBeTruthy();
+    expect(document.querySelector(".tournament-finish-icon")).toBeTruthy();
+    expect(document.querySelector(".tournament-start-icon")).toBeNull();
+  });
+
+  it("accents the existing court symbol at start without remounting the assignment or moving focus", async () => {
+    enableMotion();
+    const board = await openAssignment();
+    const nameSwitch = screen.getByRole("button", { name: "Name wechseln" });
+    nameSwitch.focus();
+    await refreshWith(nextRound("round", "running"));
+    expect(board.querySelector(".tournament-start-icon")).toBeTruthy();
+    expect(document.querySelector(".public-court-card")).toBe(board);
+    expect(document.activeElement).toBe(nameSwitch);
+    await waitFor(() =>
+      expect(document.querySelector(".tournament-start-icon")).toBeNull(),
+    );
+    await refreshWith(nextRound("round", "running"));
+    expect(document.querySelector(".tournament-start-icon")).toBeNull();
+  });
+
   it("keeps the current assignment when a refresh is temporarily interrupted", async () => {
     vi.mocked(api).mockResolvedValueOnce(eventData);
     renderPublicEvent();

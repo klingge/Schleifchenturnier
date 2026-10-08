@@ -2853,7 +2853,47 @@ body:has(.public-screen) main {
 
 .public-detail-transition {
   min-width: 0;
-  animation: public-detail-enter 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.public-court-players {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.public-court-team-own .public-court-players {
+  top: 46%;
+}
+
+@media (max-width: 400px) {
+  .public-selected-player {
+    flex-wrap: wrap;
+  }
+
+  .public-selected-player > span {
+    flex-basis: 100%;
+  }
+
+  .public-selected-player > button {
+    margin-left: auto;
+  }
+
+  .dashboard-matches .player-pill {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 4px;
+    text-align: center;
+  }
+
+  .dashboard-matches .score-team:last-child .player-pill {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .dashboard-matches .player-name {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }
 
 .public-player-picker {
@@ -2991,21 +3031,6 @@ body:has(.public-screen) main {
   text-align: center;
 }
 
-.public-finish-icon {
-  animation: public-finish-accent 520ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes public-detail-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes public-status-change {
   from {
     opacity: 0;
@@ -3014,18 +3039,6 @@ body:has(.public-screen) main {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes public-finish-accent {
-  0% {
-    transform: scale(0.86) rotate(-6deg);
-  }
-  55% {
-    transform: scale(1.12) rotate(4deg);
-  }
-  100% {
-    transform: scale(1) rotate(0);
   }
 }
 

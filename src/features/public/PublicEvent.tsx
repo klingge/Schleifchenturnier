@@ -16,6 +16,8 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { courtName, type EventData, type Player } from "@/domain/tournament";
 import { Leaderboard } from "@/features/tournament/Leaderboard";
+import { COURT_REVEAL_MS, useMoment } from "@/features/tournament/useMoment";
+import { useTournamentAccent } from "@/features/tournament/useTournamentAccent";
 import {
   getPublicRoundStatus,
   getVisiblePlayers,
@@ -38,13 +40,18 @@ export function PublicEvent() {
     [chooserOpen, setChooserOpen] = useState(
       () => !readPublicPlayerSelection(getBrowserPlayerStorage(), slug),
     ),
-    [refreshing, setRefreshing] = useState(false),
-    [completionAccent, setCompletionAccent] = useState(false);
+    [refreshing, setRefreshing] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
   const dataRef = useRef<EventData | null>(null);
   const refreshingRef = useRef(false);
   const scrollAfterSelectionRef = useRef(false);
-  const previousFinishedRef = useRef<boolean | null>(null);
+  const assignmentReveal = useMoment();
+  const tournamentAccent = useTournamentAccent(data);
+  const previousAssignmentRef = useRef<{
+    event: string;
+    round: string | null;
+    selected: string;
+  } | null>(null);
   const load = useCallback(async () => {
     try {
       const next = await api<EventData>(`/public/events/${slug}`);
@@ -92,8 +99,6 @@ export function PublicEvent() {
     setFatalError("");
     setConnectionError(false);
     setLastUpdatedAt(null);
-    setCompletionAccent(false);
-    previousFinishedRef.current = null;
     void load();
   }, [load]);
   useEffect(() => {
@@ -126,13 +131,41 @@ export function PublicEvent() {
     writePublicPlayerSelection(getBrowserPlayerStorage(), slug, "");
   }, [data, selected, slug]);
   useEffect(() => {
-    if (!data) return;
-    const finished = Boolean(data.event.finished_at);
-    if (previousFinishedRef.current === false && finished) {
-      setCompletionAccent(true);
+    if (!data) {
+      previousAssignmentRef.current = null;
+      assignmentReveal.stop();
+      return;
     }
-    previousFinishedRef.current = finished;
-  }, [data]);
+    const previous = previousAssignmentRef.current;
+    const round = data.currentRound;
+    previousAssignmentRef.current = {
+      event: data.event.id,
+      round: round?.id ?? null,
+      selected,
+    };
+    if (
+      !selected ||
+      chooserOpen ||
+      data.event.finished_at ||
+      previous?.selected !== selected ||
+      previous?.event !== data.event.id
+    ) {
+      assignmentReveal.stop();
+      return;
+    }
+    if (
+      round &&
+      previous.round !== round.id &&
+      ["published", "running", "paused"].includes(round.state)
+    )
+      assignmentReveal.play(`${round.id}:${selected}`, COURT_REVEAL_MS);
+  }, [
+    data,
+    selected,
+    chooserOpen,
+    assignmentReveal.play,
+    assignmentReveal.stop,
+  ]);
   useEffect(() => {
     if (!selected || !scrollAfterSelectionRef.current) return;
     scrollAfterSelectionRef.current = false;
@@ -200,7 +233,13 @@ export function PublicEvent() {
     );
   if (selectedPlayer && currentRound && !match)
     detail = (
-      <div className="public-state rest">
+      <div
+        className={cn(
+          "public-state rest",
+          assignmentReveal.active === `${currentRound.id}:${selected}` &&
+            "is-assignment-reveal",
+        )}
+      >
         <b>
           <Timer />
         </b>
@@ -225,7 +264,13 @@ export function PublicEvent() {
       ),
       opps = (a ? ids.slice(2) : ids.slice(0, 2)).map(p);
     detail = (
-      <article className="assignment public-court-card">
+      <article
+        className={cn(
+          "assignment public-court-card",
+          assignmentReveal.active === `${currentRound?.id}:${selected}` &&
+            "is-assignment-reveal",
+        )}
+      >
         <header className="public-assignment-summary">
           <div className="public-assignment-court">
             <div className="public-assignment-court-copy">
@@ -233,7 +278,12 @@ export function PublicEvent() {
               <strong>{courtName(match)}</strong>
             </div>
             <div className="public-assignment-court-meta">
-              <TennisBall aria-hidden="true" />
+              <TennisBall
+                aria-hidden="true"
+                className={cn(
+                  tournamentAccent === "start" && "tournament-start-icon",
+                )}
+              />
             </div>
           </div>
         </header>
@@ -283,7 +333,6 @@ export function PublicEvent() {
       }).format(lastUpdatedAt)
     : "";
   const selectionPanel = chooserOpen || !selectedPlayer;
-  const detailKey = `${selected || "none"}:${currentRound?.id ?? "lobby"}:${currentRound?.state ?? "preparing"}:${match?.id ?? "rest"}`;
   const detailPanel = (
     <section className="panel detail" ref={detailRef} aria-live="polite">
       {selectionPanel ? (
@@ -308,9 +357,7 @@ export function PublicEvent() {
               Name wechseln
             </UiButton>
           </div>
-          <div className="public-detail-transition" key={detailKey}>
-            {detail}
-          </div>
+          <div className="public-detail-transition">{detail}</div>
         </>
       )}
     </section>
@@ -373,8 +420,10 @@ export function PublicEvent() {
                 </span>
               </div>
               <Trophy
-                className={cn(completionAccent && "public-finish-icon")}
-                onAnimationEnd={() => setCompletionAccent(false)}
+                aria-hidden="true"
+                className={cn(
+                  tournamentAccent === "finish" && "tournament-finish-icon",
+                )}
               />
             </div>
             <Leaderboard players={data.leaderboard} selected={selected} />

@@ -1,0 +1,129 @@
+.draw-feedback {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.draw-tokens {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 8px 0;
+  pointer-events: none;
+}
+
+.draw-tokens i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high);
+  font-size: 1.2rem;
+  font-style: normal;
+}
+
+.draw-tokens.is-mixing i {
+  animation: draw-token-mix 600ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.draw-tokens i:nth-child(even) {
+  --mix-direction: -1;
+}
+
+.draw-tokens i:nth-child(odd) {
+  --mix-direction: 1;
+}
+
+.match.is-draw-reveal,
+.public-court-card.is-assignment-reveal {
+  animation: court-card-enter 650ms cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+@keyframes court-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.public-state.rest.is-assignment-reveal > b {
+  animation: double-avatar-settle 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes draw-token-mix {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0);
+  }
+  30% {
+    transform: translate(calc(var(--mix-direction) * 17px), -7px)
+      rotate(calc(var(--mix-direction) * 9deg));
+  }
+  65% {
+    transform: translate(calc(var(--mix-direction) * -10px), 6px)
+      rotate(calc(var(--mix-direction) * -6deg));
+  }
+}
+
+@keyframes double-avatar-settle {
+  from {
+    transform: translate(var(--avatar-x, 0px), 6px) scale(0.94) rotate(-4deg);
+  }
+  to {
+    transform: translate(0, 0) scale(1) rotate(0);
+  }
+}
+
+.tournament-start-icon {
+  animation: tournament-start 360ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.tournament-finish-icon {
+  animation: tournament-finish 700ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes tournament-start {
+  from {
+    transform: scale(0.9) rotate(-12deg);
+  }
+  35% {
+    transform: scale(1.08) rotate(-4deg);
+  }
+  to {
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes tournament-finish {
+  from {
+    transform: translateY(4px) rotate(-8deg) scale(0.94);
+  }
+  40% {
+    transform: translateY(-3px) rotate(3deg) scale(1.1);
+  }
+  to {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tournament-start-icon,
+  .tournament-finish-icon,
+  .draw-tokens.is-mixing i,
+  .match.is-draw-reveal,
+  .public-court-card.is-assignment-reveal,
+  .public-state.rest.is-assignment-reveal > b {
+    animation: none;
+  }
+}

@@ -125,10 +125,14 @@ export function MatchCard({
   m,
   players,
   entry,
+  reveal = false,
+  revealDelay = 0,
 }: {
   m: Match;
   players: Map<string, Player>;
   entry: RoundResultEntry;
+  reveal?: boolean;
+  revealDelay?: number;
 }) {
   const { teamA: a, teamB: b } = entry.draft;
   const result = entry.editable;
@@ -158,7 +162,9 @@ export function MatchCard({
         saved && "is-saved",
         saving && "is-saving",
         failed && "is-save-failed",
+        reveal && "is-draw-reveal",
       )}
+      style={{ animationDelay: `${revealDelay}ms` }}
     >
       <header className="court-label">
         <b>{courtName(m)}</b>
@@ -547,9 +553,11 @@ export function PlayerEditorHeader({
 export function Clock({
   round,
   mutate,
+  startAccent = false,
 }: {
   round: Round;
   mutate: (p: string, i: RequestInit) => Promise<void>;
+  startAccent?: boolean;
 }) {
   const policy = getRoundPolicy(round.state);
   const [left, setLeft] = useState(() => getRoundSecondsLeft(round));
@@ -573,7 +581,10 @@ export function Clock({
   return (
     <div className={cn("clock", left === 0 && "is-expired")}>
       <div className="clock-readout">
-        <Timer aria-hidden="true" />
+        <Timer
+          aria-hidden="true"
+          className={cn(startAccent && "tournament-start-icon")}
+        />
         <b role="timer" aria-label={`${left} Sekunden verbleibend`}>
           {String(Math.floor(left / 60)).padStart(2, "0")}:
           {String(left % 60).padStart(2, "0")}

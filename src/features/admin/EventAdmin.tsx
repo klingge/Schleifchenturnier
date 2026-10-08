@@ -100,6 +100,8 @@ import { DeleteEventDialog } from "@/features/admin/DeleteEventDialog";
 import { Leaderboard } from "@/features/tournament/Leaderboard";
 import { useRoundResults } from "@/features/admin/results";
 import { ManualRoundEditor } from "./ManualRoundEditor";
+import { COURT_REVEAL_MS, useMoment } from "@/features/tournament/useMoment";
+import { useTournamentAccent } from "@/features/tournament/useTournamentAccent";
 
 const eventTabs = [
   "dashboard",
@@ -129,6 +131,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
     routeLocation.pathname.split("/").filter(Boolean).at(-1) ?? "";
   const [data, setData] = useState<EventData | null>(null),
     [error, setError] = useState("");
+  const dataRef = useRef<EventData | null>(null);
   const setupActivePlayers =
     data?.players.filter((player) => player.active).length ?? 0;
   const setupActiveCourts =
@@ -143,6 +146,22 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
   const [lifecycleDialog, setLifecycleDialog] =
     useState<LifecycleDialogMode | null>(null);
   const [generating, setGenerating] = useState(false);
+  const generatingRef = useRef(false);
+  const drawMix = useMoment();
+  const drawReveal = useMoment();
+  const tournamentAccent = useTournamentAccent(
+    data?.event.id === id ? data : null,
+  );
+  useEffect(() => {
+    if (
+      drawReveal.active &&
+      (activeTab !== "dashboard" ||
+        data?.event.id !== id ||
+        data.currentRound?.id !== drawReveal.active ||
+        data.currentRound.state !== "published")
+    )
+      drawReveal.stop();
+  }, [activeTab, id, data, drawReveal.active, drawReveal.stop]);
   const [redrawConfirmOpen, setRedrawConfirmOpen] = useState(false);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [participantAddOpen, setParticipantAddOpen] = useState(false);
@@ -157,6 +176,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
   const load = useCallback(async () => {
     try {
       const next = await api<EventData>(`/admin/events/${id}`);
+      dataRef.current = next;
       setData(next);
     } catch (cause) {
       const failure = cause as Error;
@@ -270,16 +290,27 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
     completedResults = roundResults.progress.recorded,
     roundCanComplete = roundResults.progress.canComplete;
   const generate = async () => {
-    if (generating) return;
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setGenerating(true);
+    drawReveal.stop();
+    drawMix.play(id, 600);
     try {
       await mutate(`/admin/events/${id}/generate`, {
         method: "POST",
         body: JSON.stringify({ expectedRevision: data.event.revision }),
       });
+      const next = dataRef.current;
+      if (next?.event.id === id && next.currentRound?.state === "published")
+        drawReveal.play(
+          next.currentRound.id,
+          next.currentRound.matches.length * COURT_REVEAL_MS,
+        );
     } catch {
       /* The shared alert displays the error. */
     } finally {
+      drawMix.stop();
+      generatingRef.current = false;
       setGenerating(false);
     }
   };
@@ -318,8 +349,18 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                   round?.state === "completed" && "is-completed",
                 )}
               >
-                {round?.state === "completed" && (
-                  <CheckCircle aria-hidden="true" weight="fill" />
+                {eventPolicy?.finished && !eventPolicy.archived ? (
+                  <Trophy
+                    aria-hidden="true"
+                    weight="fill"
+                    className={cn(
+                      tournamentAccent === "finish" && "tournament-finish-icon",
+                    )}
+                  />
+                ) : (
+                  round?.state === "completed" && (
+                    <CheckCircle aria-hidden="true" weight="fill" />
+                  )
                 )}
                 <span>
                   {eventPolicy?.archived
@@ -418,7 +459,11 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
             round &&
             roundPolicy.clock !== "hidden" && (
               <UiCardFooter>
-                <Clock round={round} mutate={mutate} />
+                <Clock
+                  round={round}
+                  mutate={mutate}
+                  startAccent={tournamentAccent === "start"}
+                />
               </UiCardFooter>
             )}
         </UiCard>
@@ -539,6 +584,25 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                 )}
               </UiCardHeader>
               <UiCardContent>
+                {generating && (
+                  <div className="draw-feedback" role="status">
+                    <div
+                      className={cn(
+                        "draw-tokens",
+                        drawMix.active === id && "is-mixing",
+                      )}
+                      aria-hidden="true"
+                    >
+                      {data.players
+                        .filter((player) => player.active)
+                        .slice(0, 4)
+                        .map((player) => (
+                          <i key={player.id}>{player.emoji}</i>
+                        ))}
+                    </div>
+                    <span>Doppel werden ausgelost…</span>
+                  </div>
+                )}
                 {round?.state === "completed" && (
                   <div className="round-recap-leaderboard">
                     <Leaderboard players={rankedPlayers} />
@@ -607,12 +671,17 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       </UiAlert>
                     )}
                     <div className="matches dashboard-matches">
-                      {round.matches.map((m) => (
+                      {round.matches.map((m, index) => (
                         <MatchCard
                           key={m.id}
                           m={m}
                           players={pm}
                           entry={roundResults.entries.get(m.id)!}
+                          reveal={
+                            drawReveal.active === round.id &&
+                            round.state === "published"
+                          }
+                          revealDelay={index * COURT_REVEAL_MS}
                         />
                       ))}
                     </div>
