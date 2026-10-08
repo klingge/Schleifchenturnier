@@ -9,5 +9,11 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["worker", "worker-configuration.d.ts"]
+  "include": [
+    "worker",
+    "worker-configuration.d.ts",
+    "src/domain/round-rules.ts",
+    "src/domain/event-rules.ts",
+    "src/domain/tournament.ts"
+  ]
 }

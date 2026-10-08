@@ -4,8 +4,6 @@ dist/
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
-.env*
-!.env.demo
 *.log
 *.tsbuildinfo
 .DS_Store

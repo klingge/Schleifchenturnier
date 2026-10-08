@@ -234,7 +234,7 @@
               <a href="../src/features/admin/results/use-round-results.ts"
                 >use-round-results.ts</a
               >
-              <span>Zeilen 184–214, 238–241</span>
+              <span>Zeilen 187–214, 238–242</span>
             </div>
             <pre><code>if (
   validateScore(entry.draft) !== "valid" ||
@@ -376,7 +376,7 @@ await next();</code></pre>
           <div class="code-frame">
             <div class="code-ref">
               <a href="../worker/index.ts">worker/index.ts</a>
-              <span>Zeilen 478–489</span>
+              <span>Zeilen 489–500</span>
             </div>
             <pre><code>admin.put("/matches/:id/result", async (c) =&gt; {
   const input = z
@@ -402,17 +402,18 @@ await next();</code></pre>
             <p>geprüfte Fachdaten → SQL</p>
           </div>
           <p>
-            Die Route prüft zuerst, ob das Match existiert und sein Rundenstatus
-            Änderungen erlaubt. Danach bindet sie die Werte getrennt an ein
+            Die Route prüft zuerst, ob das Match existiert. Danach fragt sie die
+            gemeinsame Runden-Policy, ob dieser Zustand Ergebnisänderungen
+            erlaubt. Erst dann bindet sie die Werte getrennt an ein
             vorbereitetes SQL-Statement und markiert das Ergebnis als gespielt.
           </p>
           <div class="code-frame">
             <div class="code-ref">
               <a href="../worker/index.ts">worker/index.ts</a>
-              <span>Zeilen 490–509</span>
+              <span>Zeilen 506–520</span>
             </div>
             <pre><code>if (!match) return c.json({ error: "Match nicht gefunden." }, 404);
-if (!["running", "paused", "results", "completed"].includes(match.state))
+if (getRoundPolicy(match.state).resultAccess === "closed")
   return c.json(
     { error: "Dieses Ergebnis kann im aktuellen Rundenstatus nicht geändert werden." },
     409,

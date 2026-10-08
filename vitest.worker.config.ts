@@ -11,6 +11,7 @@ export default defineConfig({
     cloudflareTest(async () => ({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
+        d1Databases: { MIGRATION_DB: "lifecycle-migration-test" },
         bindings: {
           ADMIN_PASSWORD: "integration-test-passwort",
           SESSION_SECRET:
@@ -21,6 +22,7 @@ export default defineConfig({
     })),
   ],
   test: {
+    fileParallelism: false,
     include: ["worker/integration/**/*.test.ts"],
     setupFiles: ["./worker/integration/apply-migrations.ts"],
   },

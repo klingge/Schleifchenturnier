@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { Round } from "@/domain/tournament";
+import { getRoundPolicy } from "@/domain/round-rules";
 import {
   beginSave,
   changeEntry,
@@ -81,8 +82,6 @@ type RoundResultAction =
       succeeded: boolean;
       generation: number;
     };
-
-const resultEntryRoundStates = new Set(["running", "paused", "results"]);
 
 function roundState(round: Round | null): RoundResultState {
   return {
@@ -179,7 +178,8 @@ export function useRoundResults({
     });
   }, [round?.id]);
 
-  const active = resultEntryRoundStates.has(round?.state ?? "");
+  const policy = getRoundPolicy(round?.state);
+  const active = policy.resultAccess === "entry";
 
   useEffect(() => {
     if (!active || !round || state.roundId !== round.id) return;
@@ -271,7 +271,7 @@ export function useRoundResults({
       return entry?.persistence === "saved";
     });
     const canComplete =
-      active &&
+      policy.canComplete &&
       matches.length > 0 &&
       recorded === matches.length &&
       allLocallyConfirmed;
@@ -281,7 +281,7 @@ export function useRoundResults({
       percent: matches.length ? (recorded / matches.length) * 100 : 0,
       canComplete,
     };
-  }, [active, entries, round?.matches]);
+  }, [entries, policy.canComplete, round?.matches]);
 
   const completeRound = useCallback(() => {
     if (!round || !progress.canComplete || completing.current) return;

@@ -302,9 +302,12 @@
 .ranking {
   display: grid;
   gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.ranking > button {
+.ranking > li > :is(button, .ranking-row) {
   width: 100%;
   border: 1px solid oklch(85% 0.035 250);
   border-radius: var(--radius-md);
@@ -321,33 +324,33 @@
   padding: var(--space-2) var(--space-3);
 }
 
-.ranking > button[data-rank="1"] {
+.ranking > li > :is(button, .ranking-row)[data-rank="1"] {
   border-color: oklch(70% 0.12 80);
   background:
     linear-gradient(90deg, oklch(98% 0.05 85), var(--surface-raised)),
     var(--surface);
 }
 
-.ranking > button[data-rank="2"] {
+.ranking > li > :is(button, .ranking-row)[data-rank="2"] {
   border-color: oklch(75% 0.025 250);
   background:
     linear-gradient(90deg, oklch(96% 0.025 250), var(--surface-raised)),
     var(--surface);
 }
 
-.ranking > button[data-rank="3"] {
+.ranking > li > :is(button, .ranking-row)[data-rank="3"] {
   border-color: oklch(68% 0.09 52);
   background:
     linear-gradient(90deg, oklch(95% 0.035 55), var(--surface-raised)),
     var(--surface);
 }
 
-.ranking > button:not(:disabled) {
+.ranking > li > button {
   cursor: pointer;
 }
 
-.ranking > button:not(:disabled):hover,
-.ranking > button.selected {
+.ranking > li > button:hover,
+.ranking > li > :is(button, .ranking-row).selected {
   border-color: var(--line-strong);
   background: var(--surface-blue);
 }
@@ -397,9 +400,9 @@
 }
 
 .game-difference {
-  color: var(--quiet);
-  font-size: 0.68rem;
-  font-weight: 650;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -414,17 +417,17 @@
   font-size: 0.9rem;
 }
 
-.ranking > button[data-rank="1"] b {
+.ranking > li > :is(button, .ranking-row)[data-rank="1"] b {
   background: oklch(76% 0.14 82);
   color: oklch(25% 0.055 70);
 }
 
-.ranking > button[data-rank="2"] b {
+.ranking > li > :is(button, .ranking-row)[data-rank="2"] b {
   background: oklch(78% 0.025 250);
   color: oklch(25% 0.035 250);
 }
 
-.ranking > button[data-rank="3"] b {
+.ranking > li > :is(button, .ranking-row)[data-rank="3"] b {
   background: oklch(66% 0.12 52);
   color: oklch(22% 0.045 45);
 }

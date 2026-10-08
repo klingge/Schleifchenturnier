@@ -503,7 +503,7 @@
   gap: 8px;
 }
 
-.public-rank-panel .ranking > button {
+.public-rank-panel .ranking > li > :is(button, .ranking-row) {
   min-height: 64px;
   grid-template-columns: 32px 36px minmax(0, 1fr) auto;
   border: 0;
@@ -517,36 +517,44 @@
   white-space: normal;
 }
 
-.public-rank-panel .ranking > button[data-rank="1"] {
+.public-rank-panel .ranking > li > :is(button, .ranking-row)[data-rank="1"] {
   background: oklch(97% 0.045 84);
 }
 
-.public-rank-panel .ranking > button[data-rank="2"] {
+.public-rank-panel .ranking > li > :is(button, .ranking-row)[data-rank="2"] {
   background: oklch(96% 0.018 250);
 }
 
-.public-rank-panel .ranking > button[data-rank="3"] {
+.public-rank-panel .ranking > li > :is(button, .ranking-row)[data-rank="3"] {
   background: oklch(95% 0.035 55);
 }
 
-.public-rank-panel .ranking > button:not(:disabled):hover {
+.public-rank-panel .ranking > li > button:hover {
   background: var(--md-sys-color-surface-container-high);
   transform: translateY(-1px);
 }
 
-.public-rank-panel .ranking > button.selected {
+.public-rank-panel .ranking > li > :is(button, .ranking-row).selected {
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   box-shadow: none;
 }
 
-.public-rank-panel .ranking > button.selected small,
-.public-rank-panel .ranking > button.selected .ranking-stats,
-.public-rank-panel .ranking > button.selected .win-count {
+.public-rank-panel .ranking > li > :is(button, .ranking-row).selected small,
+.public-rank-panel
+  .ranking
+  > li
+  > :is(button, .ranking-row).selected
+  .ranking-stats,
+.public-rank-panel
+  .ranking
+  > li
+  > :is(button, .ranking-row).selected
+  .win-count {
   color: var(--md-sys-color-on-primary);
 }
 
-.public-rank-panel .ranking > button:focus-visible,
+.public-rank-panel .ranking > li > button:focus-visible,
 .public-refresh:focus-visible {
   outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 3px;
@@ -771,7 +779,7 @@
     width: 100%;
   }
 
-  .ranking > button {
+  .ranking > li > :is(button, .ranking-row) {
     grid-template-columns: 34px 32px 1fr;
   }
 
@@ -846,7 +854,7 @@
     font-size: 1.8rem;
   }
 
-  .public-rank-panel .ranking > button {
+  .public-rank-panel .ranking > li > :is(button, .ranking-row) {
     min-height: 64px;
     grid-template-columns: 32px 32px minmax(0, 1fr) auto;
   }

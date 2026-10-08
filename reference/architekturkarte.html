@@ -82,8 +82,9 @@
             <strong>3 · Fachmodule</strong>
             <p>
               <code>src/features/admin/results/</code> kapselt Ergebnisführung.
-              <code>src/domain/tournament.ts</code> beschreibt die gemeinsamen
-              Datenformen des Clients.
+              <code>src/domain/round-rules.ts</code> liefert Client und Worker
+              dieselben Rundenregeln; <code>tournament.ts</code> beschreibt die
+              gemeinsamen Datenformen des Clients.
             </p>
           </article>
           <article class="architecture-layer">
@@ -144,6 +145,11 @@
                 <td><code>src/lib/api.ts</code> und Worker-Ergebnisroute</td>
               </tr>
               <tr>
+                <td>Rundenstatus, erlaubte Aktion oder Zustandswechsel</td>
+                <td><code>src/domain/round-rules.ts</code></td>
+                <td>Admin-Oberfläche und Worker-Vertragstests</td>
+              </tr>
+              <tr>
                 <td>Öffentliche Teilnehmeransicht</td>
                 <td><code>src/features/public/</code></td>
                 <td>
@@ -151,7 +157,7 @@
                 </td>
               </tr>
               <tr>
-                <td>Neue serverseitige Fachregel</td>
+                <td>Neue rein serverseitige Fachregel</td>
                 <td>
                   <code>worker/index.ts</code> oder spezialisiertes Worker-Modul
                 </td>

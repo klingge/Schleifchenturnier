@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   ArrowClockwise,
@@ -7,7 +7,6 @@ import {
   Copy,
   Link as LinkIcon,
   LockKey,
-  Minus,
   Pause,
   PencilSimple,
   Play,
@@ -44,12 +43,12 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field as UiField,
-  FieldGroup as UiFieldGroup,
   FieldLabel as UiFieldLabel,
 } from "@/components/ui/field";
 import { Input as UiInput } from "@/components/ui/input";
 
 import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
+import { getRoundPolicy } from "@/domain/round-rules";
 import { cn } from "@/lib/utils";
 import {
   courtName,
@@ -552,10 +551,11 @@ export function Clock({
   round: Round;
   mutate: (p: string, i: RequestInit) => Promise<void>;
 }) {
+  const policy = getRoundPolicy(round.state);
   const [left, setLeft] = useState(() => getRoundSecondsLeft(round));
   useEffect(() => {
     setLeft(getRoundSecondsLeft(round));
-    if (round.state !== "running" || !round.expires_at) return;
+    if (policy.clock !== "running" || !round.expires_at) return;
     const tick = () => {
       setLeft(getRoundSecondsLeft(round));
     };
@@ -567,15 +567,9 @@ export function Clock({
     round.duration_seconds,
     round.expires_at,
     round.paused_at,
+    policy.clock,
   ]);
-  if (["published", "results"].includes(round.state))
-    return (
-      <UiBadge
-        variant={round.state === "results" ? "destructive" : "secondary"}
-      >
-        {round.state === "results" ? "Ergebnisse" : "Bereit"}
-      </UiBadge>
-    );
+  if (policy.clock === "hidden") return null;
   return (
     <div className={cn("clock", left === 0 && "is-expired")}>
       <div className="clock-readout">
@@ -588,12 +582,12 @@ export function Clock({
       <span aria-live="polite">
         {left === 0
           ? "Zeit abgelaufen"
-          : round.state === "paused"
+          : policy.clock === "paused"
             ? "Pausiert"
             : "Läuft"}
       </span>
       <div className="clock-actions">
-        {round.state === "running" ? (
+        {policy.allowedActions.includes("pause") ? (
           <UiButton
             size="icon"
             variant="outline"
@@ -627,102 +621,6 @@ export function Clock({
   );
 }
 
-export function EventSettingsDialog({
-  open,
-  onOpenChange,
-  duration,
-  save,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  duration: number;
-  save: (durationMinutes: number) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState(duration);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (open) setDraft(duration);
-  }, [duration, open]);
-  const valid = Number.isInteger(draft) && draft >= 1 && draft <= 240;
-
-  return (
-    <UiDialog open={open} onOpenChange={onOpenChange}>
-      <UiDialogContent className="sm:max-w-md">
-        <UiDialogHeader>
-          <UiDialogTitle>Veranstaltungseinstellungen</UiDialogTitle>
-        </UiDialogHeader>
-        <form
-          className="event-settings-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!valid || saving) return;
-            setSaving(true);
-            void save(draft)
-              .then(() => onOpenChange(false))
-              .catch(() => {})
-              .finally(() => setSaving(false));
-          }}
-        >
-          <UiFieldGroup>
-            <UiField>
-              <UiFieldLabel htmlFor="default-round-duration">
-                Standard-Rundendauer
-              </UiFieldLabel>
-              <div className="duration-stepper">
-                <UiButton
-                  type="button"
-                  size="icon-lg"
-                  variant="outline"
-                  aria-label="Rundendauer um 5 Minuten verringern"
-                  disabled={draft <= 1 || saving}
-                  onClick={() =>
-                    setDraft((current) => Math.max(1, current - 5))
-                  }
-                >
-                  <Minus />
-                </UiButton>
-                <UiInput
-                  id="default-round-duration"
-                  className="duration-stepper-input"
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  max="240"
-                  value={draft}
-                  aria-invalid={!valid}
-                  onChange={(event) => setDraft(Number(event.target.value))}
-                />
-                <UiButton
-                  type="button"
-                  size="icon-lg"
-                  variant="outline"
-                  aria-label="Rundendauer um 5 Minuten erhöhen"
-                  disabled={draft >= 240 || saving}
-                  onClick={() =>
-                    setDraft((current) => Math.min(240, current + 5))
-                  }
-                >
-                  <Plus />
-                </UiButton>
-              </div>
-            </UiField>
-          </UiFieldGroup>
-          <UiDialogFooter>
-            <UiDialogClose asChild>
-              <UiButton type="button" variant="outline" disabled={saving}>
-                Abbrechen
-              </UiButton>
-            </UiDialogClose>
-            <UiButton type="submit" disabled={!valid || saving}>
-              Speichern
-            </UiButton>
-          </UiDialogFooter>
-        </form>
-      </UiDialogContent>
-    </UiDialog>
-  );
-}
-
 export function InitialSetupGuide({
   eventId,
   activeTab,
@@ -741,8 +639,8 @@ export function InitialSetupGuide({
     teilnehmer: "Trage mindestens vier aktive Teilnehmer ein.",
     plaetze: "Lege die verfügbaren Plätze an und aktiviere mindestens einen.",
     dashboard: tournamentReady
-      ? "Alles bereit: Jetzt kann die erste Runde ausgelost werden."
-      : "Teilnehmer und Plätze müssen bereit sein, bevor du auslosen kannst.",
+      ? "Alles bereit: Jetzt kannst du die erste Runde auslosen oder selbst zusammenstellen."
+      : "Teilnehmer und Plätze müssen bereit sein, bevor du eine Runde veröffentlichen kannst.",
     bestenliste: "Die Bestenliste füllt sich nach der ersten gespielten Runde.",
   };
   const steps = [
@@ -834,6 +732,7 @@ export function CourtManager({
   onSetupContinue?: () => void;
 }) {
   const [courtAdding, setCourtAdding] = useState(false);
+  const courtNameRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState("");
   const [editingName, setEditingName] = useState("");
   const editingCourt = courts.find((court) => court.id === editingId);
@@ -843,6 +742,12 @@ export function CourtManager({
     () => [...courts].sort(compareCourtsByName),
     [courts],
   );
+
+  useEffect(() => {
+    if (editable && !courtAdding && !atCourtLimit) {
+      courtNameRef.current?.focus();
+    }
+  }, [editable, courtAdding, atCourtLimit]);
 
   async function addCourt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -854,6 +759,8 @@ export function CourtManager({
         body: JSON.stringify({ name: new FormData(form).get("name") }),
       });
       form.reset();
+    } catch {
+      // Die Fehlermeldung zeigt mutate an; der eingegebene Name bleibt stehen.
     } finally {
       setCourtAdding(false);
     }
@@ -863,9 +770,11 @@ export function CourtManager({
     <UiCard className="control-courts">
       <UiCardHeader>
         <UiCardTitle>Plätze</UiCardTitle>
-        <UiCardDescription>
-          {activeCount} aktiv von {courts.length}
-        </UiCardDescription>
+        {activeCount !== courts.length && (
+          <UiCardDescription>
+            {activeCount} von {courts.length} aktiv
+          </UiCardDescription>
+        )}
       </UiCardHeader>
       <UiCardContent>
         {!editable && (
@@ -873,7 +782,6 @@ export function CourtManager({
             <LockKey />
             <UiAlertTitle>Plätze im Lesemodus</UiAlertTitle>
             <UiAlertDescription>
-              Während der offenen Runde bleiben die aktiven Plätze sichtbar.
               Änderungen sind nach dem Rundenabschluss wieder möglich.
             </UiAlertDescription>
           </UiAlert>
@@ -885,6 +793,7 @@ export function CourtManager({
                 Platzname
               </UiFieldLabel>
               <UiInput
+                ref={courtNameRef}
                 id="court-name"
                 name="name"
                 placeholder="z. B. Halle 1"
@@ -901,14 +810,12 @@ export function CourtManager({
             </div>
           </form>
         )}
-        <div className={cn("court-balance", activeCount > 0 && "ready")}>
-          {activeCount > 0 ? <Check /> : <TennisBall />}
-          <span>
-            {activeCount > 0
-              ? `${activeCount} ${activeCount === 1 ? "Platz ist" : "Plätze sind"} für die nächste Auslosung aktiv.`
-              : "Aktiviere mindestens einen Platz für die nächste Auslosung."}
-          </span>
-        </div>
+        {courts.length > 0 && activeCount === 0 && (
+          <div className="court-balance">
+            <TennisBall />
+            <span>Aktiviere mindestens einen Platz für die nächste Runde.</span>
+          </div>
+        )}
         <div className="court-visual-grid">
           {sortedCourts.map((court) => (
             <div
@@ -962,17 +869,9 @@ export function CourtManager({
                   {court.active && <Check aria-hidden="true" />}
                   {court.active ? "Aktiv" : "Aus"}
                 </UiButton>
-              ) : (
-                <span
-                  className={cn(
-                    "court-read-status",
-                    court.active && "is-active",
-                  )}
-                >
-                  {court.active && <Check aria-hidden="true" />}
-                  {court.active ? "Aktiv" : "Aus"}
-                </span>
-              )}
+              ) : !court.active ? (
+                <span className="court-read-status">Aus</span>
+              ) : null}
             </div>
           ))}
           {courts.length === 0 && (

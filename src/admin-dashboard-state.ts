@@ -1,5 +1,7 @@
+import type { VisibleRoundState } from "./domain/round-rules";
+
 export type TimerRoundState = {
-  state: string;
+  state: VisibleRoundState;
   duration_seconds: number;
   expires_at: string | null;
   paused_at?: string | null;

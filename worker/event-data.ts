@@ -1,25 +1,10 @@
-import { isConfigurationLocked } from "./admin-policy";
 import { pairKey, type MatchHistory } from "./matchmaker";
 
 export type DbRow = Record<string, unknown>;
 
-async function latestRoundState(db: D1Database, eventId: string) {
-  const round = await db
-    .prepare(
-      "SELECT state FROM rounds WHERE event_id = ? AND state <> 'discarded' ORDER BY round_number DESC LIMIT 1",
-    )
-    .bind(eventId)
-    .first<{ state: string }>();
-  return round?.state ?? null;
-}
-
-export async function configurationIsLocked(db: D1Database, eventId: string) {
-  return isConfigurationLocked(await latestRoundState(db, eventId));
-}
-
 export const roundLockedBody = {
   error:
-    "Teilnehmer und Plätze können erst nach Abschluss der aktuellen Runde geändert werden.",
+    "Teilnehmer und Plätze können nur zwischen Runden eines offenen Turniers geändert werden.",
   code: "round_locked",
 };
 
