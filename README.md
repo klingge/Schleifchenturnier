@@ -18,6 +18,7 @@ Eine deutschsprachige Full-Stack-Anwendung zur Durchführung eines zeitgesteuert
 - deterministisches Matchmaking mit fairer Aussetzerverteilung und Wiederholungsvermeidung
 - responsive Teilnehmeransicht mit persönlicher Platz-, Partner- und Gegnerzuordnung
 - Worker-API mit validierten Nutzdaten, signierten Sitzungen und CSRF-Schutz
+- serverseitige Trennung von Betreiber- und Organisatorrechten mit Prüfung der Turnierzugehörigkeit
 - relationales D1-Datenmodell mit versionierten SQL-Migrationen und atomaren Schreibvorgängen
 - Unit-, Charakterisierungs- und Worker-Integrationstests gegen ein echtes migriertes D1-Schema
 - reproduzierbare Qualitätsprüfung und GitHub-Actions-Pipeline
@@ -49,6 +50,8 @@ flowchart LR
 ```
 
 Der Worker liefert sowohl die API als auch die gebauten statischen Dateien aus. Dadurch teilen Frontend und Backend ein Deployment, während die öffentliche und die administrative HTTP-Schnittstelle klar getrennt bleiben. Details stehen in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
+
+Der Zugang verwendet einen Schlüssel pro Turnier. Organisatoren melden sich unter `/admin` mit ihrem Schlüssel an: Ein unbenutzter Schlüssel führt zur Turniererstellung, ein verwendeter direkt zum eigenen Turnier. Der Betreiber meldet sich getrennt unter `/admin/betreiber` mit dem bestehenden Passwort an und erreicht die Schlüsselverwaltung über die Turnierübersicht. Dort lassen sich Schlüssel mit optionaler Bezeichnung erzeugen, einmalig kopieren, ersetzen und sperren. Alte Sitzungen ohne Rolle erfordern eine erneute Anmeldung.
 
 ## Schnellstart
 
@@ -90,11 +93,13 @@ Die genaue Entwicklungskette, CI, Deployment- und Rollback-Schritte beschreibt [
 
 ## Bewusste Produktgrenzen
 
-- ein vertrauenswürdiges Organisationsteam statt mehrerer Benutzerrollen
+- ein Betreiber mit globalem Zugriff und ein geteilter Organisatorzugang pro Turnier
+- keine automatische Ablauffrist; wer den Schlüssel besitzt, darf das Turnier organisieren
+- einzelne Personen eines Teams lassen sich mit einem geteilten Schlüssel nicht separat sperren
 - keine Selbstregistrierung, E-Mail-Zustellung oder Passwort-Wiederherstellung
 - öffentliche Ansicht ausschließlich lesend; Ergebnisse werden nur administrativ erfasst
 - keine Live-Demo, Telemetrie oder produktiven Daten im Portfolio-Repository
-- optimiert für ein zeitlich begrenztes Vereinsereignis, nicht als mandantenfähige Turnierplattform
+- optimiert für Vereinsereignisse, ohne Abrechnung, Mietlaufzeiten oder persönliche Kundenkonten
 
 ## Weitere Dokumente
 

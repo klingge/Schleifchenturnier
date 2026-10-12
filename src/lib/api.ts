@@ -1,4 +1,12 @@
 let csrfToken = "";
+const unauthorizedListeners = new Set<() => void>();
+
+export function onUnauthorized(listener: () => void) {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
 
 export function setCsrfToken(token: string) {
   csrfToken = token;
@@ -25,6 +33,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   };
   if (data.csrf) setCsrfToken(data.csrf);
   if (!response.ok) {
+    if (response.status === 401 && path.startsWith("/admin/")) {
+      clearCsrfToken();
+      unauthorizedListeners.forEach((listener) => listener());
+    }
     throw Object.assign(new Error(data.error || "Anfrage fehlgeschlagen."), {
       data,
       status: response.status,

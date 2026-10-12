@@ -1,0 +1,137 @@
+.login-switch {
+  color: var(--primary);
+  font-size: 0.9rem;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding-block: var(--space-2);
+}
+.overview-actions,
+.access-form-actions,
+.key-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.access-form-actions {
+  justify-content: flex-end;
+}
+.organizer-setup {
+  width: min(560px, 100%);
+  margin-inline: auto;
+  padding: var(--space-5);
+}
+.organizer-setup h1 {
+  font-size: 2rem;
+}
+.organizer-setup > p,
+.key-management .heading p {
+  color: var(--muted);
+  max-width: 65ch;
+}
+.key-management > .heading {
+  margin-block: var(--space-5);
+}
+.key-management .heading h1 {
+  font-size: 2rem;
+}
+.key-create {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
+}
+.key-create > [data-slot="field-group"] {
+  flex: 1;
+  min-width: 0;
+}
+.optional-label {
+  font-weight: 400;
+}
+.key-create [data-slot="field-label"] {
+  display: block;
+}
+.key-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+.key-details {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.key-details strong {
+  font-size: 1.05rem;
+  color: var(--primary-strong);
+}
+.key-details p {
+  margin-block: var(--space-2);
+}
+.key-details a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.key-details small {
+  color: var(--muted);
+}
+.key-row-actions {
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.issued-key {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+.copy-feedback {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.access-retry {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.access-retry > button {
+  justify-self: start;
+}
+@media (max-width: 700px) {
+  .overview-actions {
+    width: 100%;
+  }
+  .overview-actions > button,
+  .overview-actions > a {
+    flex: 1 1 200px;
+  }
+  .key-create {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+  }
+  .key-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .key-row-actions {
+    justify-content: flex-start;
+    gap: var(--space-2);
+  }
+  .organizer-setup h1 {
+    font-size: 1.75rem;
+  }
+}

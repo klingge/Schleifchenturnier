@@ -173,7 +173,7 @@ export function ManualRoundEditor({
       }}
     >
       <DialogContent
-        className="manual-round-dialog grid-cols-1 sm:max-w-2xl"
+        className="admin-dialog manual-round-dialog viewport-dialog sm:max-w-2xl"
         showCloseButton={!busy}
       >
         <DialogHeader className="min-w-0 pr-8">
@@ -353,7 +353,7 @@ export function ManualRoundEditor({
           if (!open) keepDraft();
         }}
       >
-        <AlertDialogContent className="w-[calc(100%-2rem)] sm:w-full sm:max-w-sm">
+        <AlertDialogContent className="admin-dialog w-[calc(100%-2rem)] sm:w-full sm:max-w-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Aufstellung verwerfen?</AlertDialogTitle>
             <AlertDialogDescription>

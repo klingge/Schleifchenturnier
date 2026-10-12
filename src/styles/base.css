@@ -51,7 +51,7 @@
   --muted-foreground: var(--muted);
   --accent: var(--primary-soft);
   --accent-foreground: var(--primary-strong);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: var(--danger);
   --border: var(--line);
   --input: var(--line);
   --ring: var(--primary);

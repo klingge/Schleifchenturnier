@@ -112,31 +112,6 @@
   gap: var(--space-2);
 }
 
-.participant-balance {
-  margin-top: var(--space-3);
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--muted);
-  padding: var(--space-2) var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 750;
-}
-
-.participant-balance svg {
-  flex: 0 0 auto;
-  color: var(--primary);
-}
-
-.participant-balance.perfect {
-  border-color: var(--line-strong);
-  background: var(--primary-soft);
-  color: var(--primary-strong);
-}
-
 .players {
   max-height: 420px;
   overflow: auto;
@@ -642,44 +617,6 @@
   place-items: center;
   align-content: center;
   color: var(--primary-strong);
-}
-
-.sitting-out {
-  margin-top: var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--warning-soft);
-  display: grid;
-  gap: var(--space-2);
-}
-
-.sitting-out strong {
-  color: oklch(34% 0.07 65);
-  font-size: 0.84rem;
-}
-
-.sitting-out div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.sitting-out span {
-  min-height: 34px;
-  border: 1px solid oklch(80% 0.065 65);
-  border-radius: 999px;
-  background: oklch(100% 0 0 / 0.72);
-  padding: var(--space-1) var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--ink);
-  font-weight: 750;
-}
-
-.sitting-out i {
-  font-style: normal;
 }
 
 .score-versus strong {

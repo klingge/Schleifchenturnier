@@ -167,7 +167,7 @@ export function PublicEvent() {
     assignmentReveal.stop,
   ]);
   useEffect(() => {
-    if (!selected || !scrollAfterSelectionRef.current) return;
+    if (chooserOpen || !selected || !scrollAfterSelectionRef.current) return;
     scrollAfterSelectionRef.current = false;
     detailRef.current?.scrollIntoView({
       block: "start",
@@ -175,7 +175,7 @@ export function PublicEvent() {
         ? "auto"
         : "smooth",
     });
-  }, [selected]);
+  }, [selected, chooserOpen]);
   const match = useMemo(
     () =>
       data?.currentRound?.matches.find((m) =>
@@ -333,6 +333,16 @@ export function PublicEvent() {
       }).format(lastUpdatedAt)
     : "";
   const selectionPanel = chooserOpen || !selectedPlayer;
+  const personalStatus = !selectionPanel && !data.event.finished_at;
+  const roundStatus = (
+    <p
+      className="public-round-status"
+      key={`${currentRound?.id ?? "lobby"}:${currentRound?.state ?? "preparing"}`}
+    >
+      {currentRound && `Runde ${currentRound.round_number} · `}
+      {publicStatus}
+    </p>
+  );
   const detailPanel = (
     <section className="panel detail" ref={detailRef} aria-live="polite">
       {selectionPanel ? (
@@ -357,6 +367,7 @@ export function PublicEvent() {
               Name wechseln
             </UiButton>
           </div>
+          {roundStatus}
           <div className="public-detail-transition">{detail}</div>
         </>
       )}
@@ -368,13 +379,7 @@ export function PublicEvent() {
         <div className="public-page-bar">
           <div className="public-page-heading">
             <h1>{data.event.name}</h1>
-            <p
-              className="public-round-status"
-              key={`${currentRound?.id ?? "lobby"}:${currentRound?.state ?? "preparing"}`}
-            >
-              {currentRound && `Runde ${currentRound.round_number} · `}
-              {publicStatus}
-            </p>
+            {!personalStatus && roundStatus}
           </div>
           <div className="public-refresh-dock">
             <span

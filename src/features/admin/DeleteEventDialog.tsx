@@ -19,9 +19,11 @@ import type { EventRow } from "@/domain/tournament";
 export function DeleteEventDialog({
   event,
   onDeleted,
+  className,
 }: {
   event: Pick<EventRow, "id" | "name">;
   onDeleted: () => void;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -60,7 +62,7 @@ export function DeleteEventDialog({
           <Trash /> Veranstaltung löschen
         </UiDropdownMenuItem>
       </UiAlertDialogTrigger>
-      <UiAlertDialogContent>
+      <UiAlertDialogContent className={className}>
         <UiAlertDialogHeader>
           <UiAlertDialogMedia>
             <Trash />

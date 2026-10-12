@@ -228,7 +228,7 @@
   display: grid;
   align-items: stretch;
   padding: 12px;
-  scroll-margin-top: 76px;
+  scroll-margin-top: 84px;
   border: 0;
   border-radius: var(--md-sys-shape-corner-extra-large);
   background: var(--md-sys-color-surface-container-low);

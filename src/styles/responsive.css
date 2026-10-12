@@ -1,0 +1,115 @@
+/* One set of controls; mobile changes their arrangement, not their behavior. */
+.viewport-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewport-dialog [data-slot="dialog-header"],
+.viewport-dialog [data-slot="dialog-footer"] {
+  flex: 0 0 auto;
+}
+
+.viewport-dialog [data-slot="dialog-header"] {
+  padding-right: calc(44px + var(--space-4));
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--space-4);
+}
+
+.dialog-body,
+.viewport-dialog .manual-round-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dialog-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  margin-inline: calc(-1 * var(--space-4));
+  padding-inline: var(--space-4);
+  scroll-padding-block: var(--space-4);
+}
+
+.dialog-body:empty {
+  display: none;
+}
+
+.viewport-dialog .correction-list {
+  max-height: none;
+  overflow: visible;
+}
+
+[data-slot="alert-dialog-content"] {
+  max-width: calc(100% - 2rem);
+  overflow-y: auto;
+}
+
+.public-selected-player > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+[data-slot="dialog-content"] [data-slot="button"],
+[data-slot="alert-dialog-content"] [data-slot="button"] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.control-action-menu [role="menuitem"] {
+  min-height: 44px;
+}
+
+@media (max-width: 700px) {
+  .dashboard-matches {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-matches .player-name {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .player-status-button {
+    min-width: 88px;
+    min-height: 44px;
+    justify-self: end;
+    padding-inline: var(--space-2);
+  }
+
+  .viewport-dialog input,
+  .viewport-dialog select {
+    font-size: 1rem;
+  }
+
+  .correction-player-details,
+  .player-name-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .player-name-actions {
+    flex-wrap: wrap;
+  }
+
+  .player-name-actions > button {
+    flex: 1 1 auto;
+  }
+
+  [data-slot="dialog-footer"] > button,
+  [data-slot="alert-dialog-footer"] > button {
+    height: auto;
+    white-space: normal;
+    padding-block: var(--space-3);
+  }
+}

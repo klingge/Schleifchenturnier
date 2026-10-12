@@ -54,7 +54,19 @@ Das Seed-Skript ist wiederholbar und betrifft ausschließlich die lokale D1-Inst
 - reine Unit-Tests prüfen Matchmaking, Statusrichtlinien, Emoji-Vergabe und lokale Auswahlzustände.
 - Charakterisierungstests sichern bestehende HTTP-Formate, Login/Session, manipulierte Cookies, CSRF-Grenzen, Ergebniskorrekturen und Rundenstatus.
 - Worker-Integrationstests laufen mit der Cloudflare-Vitest-Integration in Workerd. Vor den Tests werden dieselben SQL-Migrationen wie im Deployment auf eine isolierte D1-Datenbank angewendet.
+- Oberflächentests in `src/features/access/access.test.tsx` prüfen die getrennten Anmeldungen, Rollenweiterleitung, verborgene Betreiberaktionen, konkurrierende Turniererstellung, Sitzungsentzug, Verbindungsfehler und einmalige Schlüsselanzeige einschließlich Zwischenablage-Fallback.
 - visuelle QA verwendet identische Demo-Daten bei 1440, 390 und 320 Pixel Breite; maßgeblich sind Bedienabläufe und relevante sichtbare Abweichungen, keine fragile pixelgenaue Momentaufnahme.
+
+## Zugang lokal prüfen
+
+1. Betreiberzugang unter `/admin/betreiber` öffnen und einen beschrifteten Schlüssel in der Turnierübersicht über „Turnierschlüssel“ erzeugen.
+2. Schlüssel kopieren und den Dialog schließen. Die Liste zeigt anschließend nur Bezeichnung, Zuordnung und Status.
+3. In zwei getrennten Browserprofilen unter `/admin` mit demselben Schlüssel anmelden. Beide können die Erstellung öffnen; gleichzeitiges Absenden darf nur ein Turnier erzeugen und führt beide Geräte dorthin.
+4. Teilnehmer, Plätze und Turnierablauf prüfen. Das Organisatormenü enthält weder Archivieren noch Löschen; Betreiber- und fremde Turnier-URLs öffnen das eigene Turnier.
+5. Als Betreiber sperren oder ersetzen. Bei der nächsten Verwaltungsanfrage beziehungsweise Fokusprüfung wechseln laufende Organisatorsitzungen zur Anmeldung. Der Ersatzschlüssel öffnet dasselbe Turnier; der alte bleibt ungültig.
+6. Den öffentlichen Link ohne Anmeldung prüfen, auch nach Abschluss oder Schlüsselsperrung. Archivieren und Löschen bleiben Betreiberaufgaben.
+
+Nur erfundene Daten und lokale Testschlüssel verwenden. Für eine isolierte Bedienprüfung einen eigenen lokalen D1-Speicher mit denselben Migrationen nutzen. Schlüssel nie in Screenshots für das Portfolio, URLs oder Testprotokolle aufnehmen.
 
 ## Continuous Integration
 
@@ -65,6 +77,7 @@ Das Seed-Skript ist wiederholbar und betrifft ausschließlich die lokale D1-Inst
 1. Mit `npx wrangler login` am gewünschten Cloudflare-Konto anmelden.
 2. Eine D1-Datenbank anlegen und deren ID in `wrangler.jsonc` eintragen.
 3. `ADMIN_PASSWORD` und `SESSION_SECRET` über `npx wrangler secret put …` setzen.
+   Das Login-Binding `AUTH_RATE_LIMIT` verwendet den Namespace `47657201` mit 20 Versuchen pro 60 Sekunden. Der Namespace muss innerhalb des Cloudflare-Kontos für diese Anwendung reserviert sein; gleiche Namespace-IDs teilen ihre Zähler mit anderen Workers. Nach einer Konfigurationsänderung Worker-Typen neu erzeugen.
 4. Vor der Migration ein D1-Backup beziehungsweise einen Export nach den aktuellen Cloudflare-Verfahren erstellen.
 5. `npm run db:migrate:remote` ausführen.
 6. `npm run deploy` ausführen und die ausgegebene Version prüfen.

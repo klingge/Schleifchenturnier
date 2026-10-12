@@ -5,6 +5,7 @@ type TestEnv = {
   DB: D1Database;
   ADMIN_PASSWORD: string;
   SESSION_SECRET: string;
+  AUTH_RATE_LIMIT: RateLimit;
 };
 
 function mockDb(
@@ -86,6 +87,7 @@ async function adminRequest(
 const baseEnv = {
   ADMIN_PASSWORD: "test-password",
   SESSION_SECRET: "test-session-secret-with-enough-entropy",
+  AUTH_RATE_LIMIT: { limit: async () => ({ success: true }) },
 };
 
 describe("admin configuration routes", () => {

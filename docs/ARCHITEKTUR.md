@@ -39,7 +39,10 @@ sequenceDiagram
 ### Worker
 
 - `worker/index.ts`: App-Komposition, Validierung und fachliche Routen
-- `worker/auth.ts`: Login, Sitzung, Cookie und Admin-Middleware
+- `worker/auth.ts`: Betreiberlogin, rollenbezogene Sitzung, Cookie und aktuelle Schlüsselprüfung
+- `worker/authorization.ts`: ausdrücklich freigegebene Organisatoraktionen und Prüfung der Turnierzugehörigkeit
+- `worker/organizer-keys.ts`: Schlüsselausgabe, Prüfsumme, Ersetzen, Sperren und nicht geheime Verwaltungsübersicht
+- `worker/event-creation.ts`: Veranstaltungserstellung und atomarer Verbrauch des einmaligen Erstellungsrechts
 - `worker/crypto.ts`: Base64url, HMAC und zeitkonstanter Vergleich
 - `worker/event-data.ts`: Datenzugriff und Aufbau des Event-DTOs
 - `worker/event-mutations.ts`: Event-Snapshot und atomare Versionsprüfung für Konfiguration und Lebenszyklusänderungen
@@ -53,25 +56,29 @@ sequenceDiagram
 
 Alle Nutzdaten bleiben JSON; die bestehende URL-Struktur, Statuscodes und Antwortformen sind die öffentliche Kompatibilitätsgrenze.
 
-| Methode          | Route                                 | Zweck                                          | Schutz                   |
-| ---------------- | ------------------------------------- | ---------------------------------------------- | ------------------------ |
-| POST             | `/api/auth/login`                     | Admin-Sitzung anlegen                          | Passwort                 |
-| POST             | `/api/auth/logout`                    | Cookie entfernen                               | –                        |
-| GET              | `/api/auth/session`                   | Sitzungsstatus und CSRF-Token                  | Cookie optional          |
-| GET/POST         | `/api/admin/events`                   | Veranstaltungen lesen/anlegen                  | Sitzung, bei POST CSRF   |
-| GET/PATCH/DELETE | `/api/admin/events/:id`               | Veranstaltung lesen/ändern/löschen             | Sitzung, schreibend CSRF |
-| POST             | `/api/admin/events/:id/players`       | Spieler anlegen                                | Sitzung + CSRF           |
-| PATCH            | `/api/admin/players/:id`              | Name/Aktivität ändern                          | Sitzung + CSRF           |
-| POST             | `/api/admin/events/:id/courts`        | Platz anlegen                                  | Sitzung + CSRF           |
-| PATCH/DELETE     | `/api/admin/courts/:id`               | Platz ändern/löschen                           | Sitzung + CSRF           |
-| POST             | `/api/admin/events/:id/generate`      | Runde auslosen und veröffentlichen             | Sitzung + CSRF           |
-| POST             | `/api/admin/events/:id/rounds/manual` | Vollständige manuelle Runde veröffentlichen    | Sitzung + CSRF           |
-| POST             | `/api/admin/rounds/:id/action`        | starten, pausieren, fortsetzen                 | Sitzung + CSRF           |
-| PUT              | `/api/admin/matches/:id/result`       | Ergebnis setzen oder korrigieren               | Sitzung + CSRF           |
-| POST             | `/api/admin/rounds/:id/complete`      | Runde abschließen                              | Sitzung + CSRF           |
-| POST             | `/api/admin/events/:id/finish`        | Turnier zwischen Runden beenden                | Sitzung + CSRF           |
-| POST             | `/api/admin/events/:id/resume`        | Beendetes Turnier mit neuer Planung fortsetzen | Sitzung + CSRF           |
-| GET              | `/api/public/events/:slug`            | öffentliche Leseansicht                        | öffentlich               |
+| Methode          | Route                                 | Zweck                                          | Schutz                        |
+| ---------------- | ------------------------------------- | ---------------------------------------------- | ----------------------------- |
+| POST             | `/api/auth/login`                     | Admin-Sitzung anlegen                          | Passwort                      |
+| POST             | `/api/auth/key-login`                 | Organisatorsitzung für einen Turnierschlüssel  | Schlüssel + Anmeldebegrenzung |
+| POST             | `/api/auth/logout`                    | Cookie entfernen                               | –                             |
+| GET              | `/api/auth/session`                   | Sitzungsstatus und CSRF-Token                  | Cookie optional               |
+| GET/POST         | `/api/admin/events`                   | Veranstaltungen lesen/anlegen                  | Sitzung, bei POST CSRF        |
+| GET/POST         | `/api/admin/keys`                     | Schlüsselübersicht lesen / Schlüssel erzeugen  | Betreiber, bei POST CSRF      |
+| POST             | `/api/admin/keys/:id/rotate`          | Schlüssel ersetzen und Zugang neu freigeben    | Betreiber + CSRF              |
+| POST             | `/api/admin/keys/:id/revoke`          | Schlüsselzugang sperren                        | Betreiber + CSRF              |
+| GET/PATCH/DELETE | `/api/admin/events/:id`               | Veranstaltung lesen/ändern/löschen             | Sitzung, schreibend CSRF      |
+| POST             | `/api/admin/events/:id/players`       | Spieler anlegen                                | Sitzung + CSRF                |
+| PATCH            | `/api/admin/players/:id`              | Name/Aktivität ändern                          | Sitzung + CSRF                |
+| POST             | `/api/admin/events/:id/courts`        | Platz anlegen                                  | Sitzung + CSRF                |
+| PATCH/DELETE     | `/api/admin/courts/:id`               | Platz ändern/löschen                           | Sitzung + CSRF                |
+| POST             | `/api/admin/events/:id/generate`      | Runde auslosen und veröffentlichen             | Sitzung + CSRF                |
+| POST             | `/api/admin/events/:id/rounds/manual` | Vollständige manuelle Runde veröffentlichen    | Sitzung + CSRF                |
+| POST             | `/api/admin/rounds/:id/action`        | starten, pausieren, fortsetzen                 | Sitzung + CSRF                |
+| PUT              | `/api/admin/matches/:id/result`       | Ergebnis setzen oder korrigieren               | Sitzung + CSRF                |
+| POST             | `/api/admin/rounds/:id/complete`      | Runde abschließen                              | Sitzung + CSRF                |
+| POST             | `/api/admin/events/:id/finish`        | Turnier zwischen Runden beenden                | Sitzung + CSRF                |
+| POST             | `/api/admin/events/:id/resume`        | Beendetes Turnier mit neuer Planung fortsetzen | Sitzung + CSRF                |
+| GET              | `/api/public/events/:slug`            | öffentliche Leseansicht                        | öffentlich                    |
 
 ## Datenmodell
 
@@ -100,7 +107,31 @@ Migrationen liegen unveränderlich nummeriert unter `migrations/`. Mehrteilige f
 
 Nach erfolgreichem Passwortvergleich erzeugt der Worker eine zwölf Stunden gültige Sitzung. Ihr Payload enthält Ablaufzeit und zufälligen CSRF-Wert; HMAC-SHA-256 signiert den Base64url-Payload mit `SESSION_SECRET`. Das Token liegt in einem `HttpOnly`, `Secure`, `SameSite=Lax` Cookie. Signaturen und Passwort werden zeitkonstant verglichen.
 
-Die Admin-Middleware prüft bei jeder geschützten Anfrage Cookie, Signatur und Ablaufzeit. Für alle Methoden außer `GET` und `HEAD` muss der Client zusätzlich denselben CSRF-Wert im Header `x-csrf-token` senden. Dadurch kann fremder Seiteninhalt das Cookie nicht allein für Schreibvorgänge missbrauchen.
+Die Sitzung enthält ausdrücklich die Rolle `operator` oder `organizer`. Sitzungen ohne Rolle sowie ungültige Payloads werden verworfen; nach dem Umstieg ist eine erneute Anmeldung erforderlich. Der Passwortlogin erstellt ausschließlich Betreibersitzungen. Die Sitzungsantwort ergänzt `role` und `eventId` (beim Betreiber `null`).
+
+Die Sitzungs-Middleware prüft bei jeder geschützten Anfrage Cookie, Signatur und Ablaufzeit. Für alle Methoden außer `GET` und `HEAD` muss der Client zusätzlich denselben CSRF-Wert im Header `x-csrf-token` senden. Dadurch kann fremder Seiteninhalt das Cookie nicht allein für Schreibvorgänge missbrauchen. Authentifizierungs- und Verwaltungsantworten tragen `Cache-Control: no-store`.
+
+Organisatorsitzungen enthalten Schlüssel-ID und Version. Ihre aktuelle Turnierzuordnung wird bei jeder Anfrage aus `organizer_keys` gelesen. Gesperrte, ersetzte oder entfernte Schlüssel machen bereits vorhandene Sitzungen ungültig. Die Tabelle speichert nur eine Prüfsumme, niemals den vollständigen Schlüssel. `used_at` bewahrt den einmaligen Verbrauch auch dann, wenn die zugehörige Veranstaltung endgültig gelöscht wird; der Löschweg sperrt den Schlüssel zusätzlich atomar.
+
+Die Veranstaltungsübersicht liefert Organisatoren ausschließlich ihr zugeordnetes Turnier. Bei einzelnen Veranstaltungen, Spielern, Plätzen, Runden und Matches prüft die Berechtigungs-Middleware die Turnierzugehörigkeit vor der Fachlogik. Fehlende und fremde Ressourcen ergeben dieselbe `404`-Antwort. Neue Verwaltungsrouten bleiben für Organisatoren gesperrt, bis sie ausdrücklich freigegeben werden. Statusänderungen (einschließlich Archivierung), endgültiges Löschen und Schlüsselverwaltung sind dem Betreiber vorbehalten. Die öffentliche API enthält keine Zugangsinformationen.
+
+### Ein Schlüssel pro Turnier
+
+Der Betreiber erzeugt mit `POST /api/admin/keys` und `{ "label": "TC Musterverein" }` einen Schlüssel; die Bezeichnung ist optional. Ausgabe und Ersetzen liefern `{ key, organizerKey }`. `key` besteht aus 24 zufälligen Bytes, kodiert als 32 Base64url-Zeichen. Nur seine hexadezimale SHA-256-Prüfsumme wird gespeichert. `organizerKey` und die Übersicht `{ keys }` enthalten ausschließlich ID, Bezeichnung, Version, Sperrzeitpunkt, Turnier-ID und -Name sowie Nutzungs- und Anlagezeitpunkte; die Prüfsumme wird nicht ausgegeben. Der vollständige Schlüssel kann nicht erneut abgerufen werden.
+
+`POST /api/auth/key-login` erhält `{ "key": "..." }`. Äußere Leerzeichen werden entfernt, der Schlüssel selbst bleibt groß-/kleinschreibungssensitiv. Ungültige, gesperrte, ersetzte und nach Turnierlöschung verbrauchte Schlüssel ergeben dieselbe `401`-Antwort. Ein gültiger Schlüssel eröffnet eine zwölf Stunden gültige Organisatorsitzung; `eventId` ist vor der Erstellung `null` und danach die zugeordnete Veranstaltung. Derselbe Schlüssel kann mehrere Geräte anmelden.
+
+Ein unbenutzter Schlüssel darf den bestehenden Endpunkt `POST /api/admin/events` einmal verwenden. Ein D1-Batch fügt die Veranstaltung nur bei unverändertem, freigegebenem und unbenutztem Schlüssel ein und speichert anschließend dessen Zuordnung. Beide Schritte erfolgen in einer Transaktion. Konkurrierende Erstellung, zwischenzeitliche Sperrung oder Ersetzung hinterlassen keine zusätzliche Veranstaltung; der unterlegene Erstellungsversuch erhält `409` mit `code: "key_creation_unavailable"`. Ungültige Veranstaltungsdaten verbrauchen den Schlüssel nicht. Der Betreiber kann weiterhin unabhängig von Schlüsseln Veranstaltungen anlegen.
+
+Ersetzen erzeugt einen neuen Schlüssel, erhöht dessen Version und hebt eine vorhandene Sperre auf. Eine bestehende Turnierzuordnung und der Verbrauch bleiben erhalten; bisherige Sitzungen und der alte Schlüssel werden ungültig. Nach endgültiger Turnierlöschung kann der verbrauchte Schlüssel weder wieder angemeldet noch ersetzt werden. Wiederholtes Sperren ist zulässig und verändert die öffentliche Turniersicht nicht.
+
+Beide Anmeldewege akzeptieren ausschließlich JSON und weisen Browseranfragen mit fremdem `Origin` vor der Anmeldung ab. Sie teilen das Binding `AUTH_RATE_LIMIT` mit 20 Versuchen pro 60 Sekunden und IP (`CF-Connecting-IP`; lokal ohne Header ein gemeinsamer Ersatzwert). Überschreitungen ergeben `429` und `Retry-After: 60`. Die Begrenzung betrifft die Anmeldung, nicht vorhandene Sitzungen oder öffentliches Polling. Cloudflares Binding ist ein Schutz gegen häufige Anfragen und kein weltweit exakt synchronisiertes Kontingent: [Zähler sind je Cloudflare-Standort lokal](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). Die Binding-Konfiguration ist im Repository vorbereitet; sie wird erst mit einem gesondert autorisierten Deployment produktiv eingerichtet.
+
+**Bedienung:** `/admin` ist die Schlüsselanmeldung, `/admin/betreiber` der getrennte Passwortzugang. Der Betreiber erreicht `/admin/keys` aus der Turnierübersicht. Schlüssel werden ausschließlich im Erzeugen-/Ersetzen-Dialog angezeigt und beim Schließen oder Verlassen der Verwaltung aus dem React-Zustand entfernt; sie stehen weder in URLs noch in Web Storage. Nach dem Schließen ist nur ein Ersatz möglich. Gelöschte Turniere erlauben keine erneute Schlüsselaktivierung.
+
+`src/features/access/AdminArea.tsx` lädt Rolle und Turnierzuordnung und wählt Übersicht, Erstellung oder eigenes Turnier. Organisatoren werden auch bei direkten Betreiber- oder fremden Turnier-URLs zum eigenen Turnier geleitet. Der Worker bleibt die verbindliche Zugriffskontrolle. Das Veranstaltungsmenü blendet Betreiberaktionen für Organisatoren aus, während Abschluss und Fortsetzung verfügbar bleiben.
+
+Nach einer konkurrierenden Erstellung oder einer verlorenen Antwort wird die aktuelle Turnierzuordnung erneut geladen. Eine bestätigte ungültige Sitzung oder eine `401` einer Verwaltungsanfrage entfernt die geschützte Oberfläche und den CSRF-Token. Beim erneuten Fokus wird die Sitzung geprüft; ein vorübergehender Verbindungsfehler erhält eine bestätigte Anmeldung. Öffentliche Routen sind unabhängig von der Sitzungsprüfung erreichbar. Bestehende Veranstaltungen erhalten keinen Organisatorzugang.
 
 ## Rundenstatus
 

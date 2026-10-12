@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import type { EventData } from "@/domain/tournament";
+import type { EventData, Round } from "@/domain/tournament";
 import { api } from "@/lib/api";
 import { PublicEvent } from "./PublicEvent";
 
@@ -132,7 +132,7 @@ describe("public event refresh behavior", () => {
   };
   const nextRound = (
     id: string,
-    state: "published" | "running" = "published",
+    state: Round["state"] = "published",
   ): EventData => ({
     ...eventData,
     currentRound: { ...eventData.currentRound!, id, state },
@@ -159,6 +159,45 @@ describe("public event refresh behavior", () => {
       ).toBe(false),
     );
   }
+
+  it("shows round status once beside the assignment, and moves it back for name selection and final standings", async () => {
+    await openAssignment();
+    const status = () => document.querySelectorAll(".public-round-status");
+    expect(status()).toHaveLength(1);
+    expect(status()[0].closest(".detail")).toBeTruthy();
+    expect(status()[0].textContent).toBe("Runde 1 · Start folgt");
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      behavior: "auto",
+    });
+    for (const [state, text] of [
+      ["running", "Runde läuft"],
+      ["paused", "Runde pausiert"],
+      ["results", "Ergebnisse werden erfasst"],
+      ["completed", "Runde abgeschlossen"],
+    ] as const) {
+      await refreshWith(nextRound("round", state));
+      expect(status()).toHaveLength(1);
+      expect(status()[0].textContent).toBe(`Runde 1 · ${text}`);
+      expect(status()[0].closest(".detail")).toBeTruthy();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Name wechseln" }));
+    expect(status()).toHaveLength(1);
+    expect(status()[0].closest(".public-page-heading")).toBeTruthy();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Mara" }));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Name wechseln" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nele" }));
+    expect(status()).toHaveLength(1);
+    expect(status()[0].closest(".detail")).toBeTruthy();
+    await refreshWith({
+      ...nextRound("round", "completed"),
+      event: { ...eventData.event, finished_at: "2026-10-10T12:00:00Z" },
+    });
+    expect(status()).toHaveLength(1);
+    expect(status()[0].closest(".public-page-heading")).toBeTruthy();
+  });
 
   it("reveals a new round once without remounting names or replaying unchanged data", async () => {
     enableMotion();
@@ -271,6 +310,9 @@ describe("public event refresh behavior", () => {
     expect(await screen.findByText(/Aktualisierung unterbrochen/)).toBeTruthy();
     expect(screen.getByText("Center Court")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Name wechseln" })).toBeTruthy();
+    expect(
+      document.querySelector(".detail .public-round-status")?.textContent,
+    ).toBe("Runde 1 · Start folgt");
   });
 
   it("clears stale event data after confirmed nonavailability", async () => {

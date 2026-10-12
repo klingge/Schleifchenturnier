@@ -26,6 +26,7 @@ import { Badge as UiBadge } from "@/components/ui/badge";
 import { Button as UiButton } from "@/components/ui/button";
 import {
   Card as UiCard,
+  CardAction as UiCardAction,
   CardContent as UiCardContent,
   CardDescription as UiCardDescription,
   CardFooter as UiCardFooter,
@@ -36,6 +37,7 @@ import {
   Dialog as UiDialog,
   DialogClose as UiDialogClose,
   DialogContent as UiDialogContent,
+  DialogBody as UiDialogBody,
   DialogFooter as UiDialogFooter,
   DialogHeader as UiDialogHeader,
   DialogTitle as UiDialogTitle,
@@ -92,11 +94,11 @@ export function QR({ url }: { url: string }) {
           <LinkIcon data-icon="inline-start" /> Teilnehmeransicht
         </UiButton>
       </UiDialogTrigger>
-      <UiDialogContent className="sm:max-w-md">
+      <UiDialogContent className="admin-dialog viewport-dialog sm:max-w-md">
         <UiDialogHeader>
           <UiDialogTitle>Teilnehmeransicht</UiDialogTitle>
         </UiDialogHeader>
-        <div className="qr">
+        <UiDialogBody className="qr">
           {img ? (
             <img
               src={img}
@@ -107,7 +109,7 @@ export function QR({ url }: { url: string }) {
           ) : (
             <UiSkeleton className="size-72" />
           )}
-        </div>
+        </UiDialogBody>
         <UiDialogFooter>
           <UiDialogClose asChild>
             <UiButton variant="outline">Schließen</UiButton>
@@ -371,7 +373,7 @@ export function ScoreCorrection({
           {!editing && (
             <UiButton
               type="button"
-              size="icon-sm"
+              size="icon-lg"
               variant="ghost"
               aria-label={`Ergebnis aus Runde ${round.round_number} bearbeiten`}
               onClick={correction.begin}
@@ -530,7 +532,7 @@ export function PlayerEditorHeader({
             {editable && (
               <UiButton
                 type="button"
-                size="icon-sm"
+                size="icon-lg"
                 variant="ghost"
                 aria-label={`Name von ${player.display_name} bearbeiten`}
                 onClick={() => setEditing(true)}
@@ -780,12 +782,38 @@ export function CourtManager({
   return (
     <UiCard className="control-courts">
       <UiCardHeader>
-        <UiCardTitle>Plätze</UiCardTitle>
+        <UiCardTitle as="h2">Plätze</UiCardTitle>
         {activeCount !== courts.length && (
           <UiCardDescription>
             {activeCount} von {courts.length} aktiv
           </UiCardDescription>
         )}
+        <UiCardAction className="court-add-toolbar">
+          {editable && (
+            <form className="court-add-form" onSubmit={addCourt}>
+              <UiField>
+                <UiFieldLabel className="sr-only" htmlFor="court-name">
+                  Platzname
+                </UiFieldLabel>
+                <UiInput
+                  ref={courtNameRef}
+                  id="court-name"
+                  name="name"
+                  placeholder="z. B. Halle 1"
+                  maxLength={40}
+                  disabled={courtAdding || atCourtLimit}
+                  aria-busy={courtAdding}
+                  required
+                />
+              </UiField>
+              <div className="court-add-actions">
+                <UiButton type="submit" disabled={courtAdding || atCourtLimit}>
+                  {courtAdding ? "Wird hinzugefügt…" : "Hinzufügen"}
+                </UiButton>
+              </div>
+            </form>
+          )}
+        </UiCardAction>
       </UiCardHeader>
       <UiCardContent>
         {!editable && (
@@ -796,30 +824,6 @@ export function CourtManager({
               Änderungen sind nach dem Rundenabschluss wieder möglich.
             </UiAlertDescription>
           </UiAlert>
-        )}
-        {editable && (
-          <form className="court-add-form" onSubmit={addCourt}>
-            <UiField>
-              <UiFieldLabel className="sr-only" htmlFor="court-name">
-                Platzname
-              </UiFieldLabel>
-              <UiInput
-                ref={courtNameRef}
-                id="court-name"
-                name="name"
-                placeholder="z. B. Halle 1"
-                maxLength={40}
-                disabled={courtAdding || atCourtLimit}
-                aria-busy={courtAdding}
-                required
-              />
-            </UiField>
-            <div className="court-add-actions">
-              <UiButton type="submit" disabled={courtAdding || atCourtLimit}>
-                {courtAdding ? "Wird hinzugefügt…" : "Hinzufügen"}
-              </UiButton>
-            </div>
-          </form>
         )}
         {courts.length > 0 && activeCount === 0 && (
           <div className="court-balance">
@@ -905,13 +909,13 @@ export function CourtManager({
           if (!open) setEditingId("");
         }}
       >
-        <UiDialogContent className="sm:max-w-md">
+        <UiDialogContent className="admin-dialog viewport-dialog sm:max-w-md">
           <UiDialogHeader>
             <UiDialogTitle>Platz umbenennen</UiDialogTitle>
           </UiDialogHeader>
           {editingCourt && (
             <form
-              className="court-edit-form"
+              className="court-edit-form dialog-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void mutate(`/admin/courts/${editingCourt.id}`, {
@@ -920,17 +924,21 @@ export function CourtManager({
                 }).then(() => setEditingId(""));
               }}
             >
-              <UiField>
-                <UiFieldLabel htmlFor="court-edit-name">Platzname</UiFieldLabel>
-                <UiInput
-                  id="court-edit-name"
-                  value={editingName}
-                  maxLength={40}
-                  onChange={(event) => setEditingName(event.target.value)}
-                  autoFocus
-                  required
-                />
-              </UiField>
+              <UiDialogBody>
+                <UiField>
+                  <UiFieldLabel htmlFor="court-edit-name">
+                    Platzname
+                  </UiFieldLabel>
+                  <UiInput
+                    id="court-edit-name"
+                    value={editingName}
+                    maxLength={40}
+                    onChange={(event) => setEditingName(event.target.value)}
+                    autoFocus
+                    required
+                  />
+                </UiField>
+              </UiDialogBody>
               <UiDialogFooter>
                 <UiDialogClose asChild>
                   <UiButton type="button" variant="outline">

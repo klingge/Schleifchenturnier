@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -35,6 +36,90 @@ const round: Round = {
 };
 
 describe("Turnierplanung und Abschlussdialoge", () => {
+  it("archives a finished tournament only after confirmation and blocks duplicate submissions and closing while pending", async () => {
+    let resolve!: () => void;
+    const save = vi.fn(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done;
+        }),
+    );
+    const close = vi.fn();
+    render(
+      <EventLifecycleDialog
+        event={event}
+        round={round}
+        mode="archive"
+        onClose={close}
+        save={save}
+      />,
+    );
+    expect(screen.getByText(/„Sommerfest“ archivieren/)).toBeTruthy();
+    expect(
+      screen.getByText(/öffentliche Teilnehmeransicht wird abgeschaltet/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+    const confirm = screen.getByRole("button", {
+      name: "Veranstaltung archivieren",
+    });
+    fireEvent.click(confirm);
+    fireEvent.submit(confirm.closest("form")!);
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Schließen" })).toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledWith("/admin/events/event", {
+      status: "archived",
+      expectedRevision: 7,
+    });
+    await act(async () => resolve());
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("keeps archive errors visible and retries with the revision known when opened", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Verbindung unterbrochen. Bitte erneut versuchen."),
+      )
+      .mockResolvedValueOnce(undefined);
+    const close = vi.fn();
+    const view = render(
+      <EventLifecycleDialog
+        event={event}
+        round={round}
+        mode="archive"
+        onClose={close}
+        save={save}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Veranstaltung archivieren" }),
+    );
+    await screen.findByText("Verbindung unterbrochen. Bitte erneut versuchen.");
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    view.rerender(
+      <EventLifecycleDialog
+        event={{ ...event, revision: 8 }}
+        round={round}
+        mode="archive"
+        onClose={close}
+        save={save}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Veranstaltung archivieren" }),
+    );
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(save.mock.calls.map(([, body]) => body)).toEqual([
+      { status: "archived", expectedRevision: 7 },
+      { status: "archived", expectedRevision: 7 },
+    ]);
+  });
+
   it("defaults to manual ending and exposes a required count only for fixed rounds", () => {
     function Form() {
       const [value, setValue] = useState<number | null>(null);

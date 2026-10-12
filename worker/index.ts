@@ -13,8 +13,10 @@ import {
   roundActions,
   type RoundState,
 } from "../src/domain/round-rules";
-import { createAuthRoutes, requireAdmin, type WorkerVariables } from "./auth";
-import { base64Url } from "./crypto";
+import { createAuthRoutes, requireSession, type WorkerVariables } from "./auth";
+import { requireAdministrationAccess } from "./authorization";
+import { createEvent } from "./event-creation";
+import { createKeyRoutes } from "./organizer-keys";
 import { generateMatches } from "./matchmaker";
 import {
   buildHistory,
@@ -96,17 +98,23 @@ export function resolveRoundDurationSeconds(
 app.route("/auth", createAuthRoutes());
 
 const admin = new Hono<{ Bindings: Env; Variables: WorkerVariables }>();
-admin.use("*", requireAdmin);
+admin.use("*", requireSession, requireAdministrationAccess);
+admin.route("/keys", createKeyRoutes());
 
 admin.get("/events", async (c) => {
+  const principal = c.get("principal");
+  if (principal.role === "organizer" && principal.eventId === null)
+    return c.json({ events: [], csrf: c.get("csrf") });
+  const query = c.env.DB.prepare(
+    `SELECT events.*, COUNT(courts.id) AS court_count
+     FROM events
+     LEFT JOIN courts ON courts.event_id = events.id
+     ${principal.role === "organizer" ? "WHERE events.id = ?" : ""}
+     GROUP BY events.id
+     ORDER BY events.event_date DESC, events.created_at DESC`,
+  );
   const events = await rows(
-    c.env.DB.prepare(
-      `SELECT events.*, COUNT(courts.id) AS court_count
-       FROM events
-       LEFT JOIN courts ON courts.event_id = events.id
-       GROUP BY events.id
-       ORDER BY events.event_date DESC, events.created_at DESC`,
-    ),
+    principal.role === "organizer" ? query.bind(principal.eventId) : query,
   );
   return c.json({ events, csrf: c.get("csrf") });
 });
@@ -115,24 +123,16 @@ admin.post("/events", async (c) => {
   const input = eventInput.safeParse(await c.req.json().catch(() => ({})));
   if (!input.success)
     return c.json({ error: "Bitte alle Veranstaltungsdaten prüfen." }, 400);
-  const eventId = id();
-  const timestamp = now();
-  const slug = base64Url(crypto.getRandomValues(new Uint8Array(12)));
-  await c.env.DB.prepare(
-    "INSERT INTO events (id, public_slug, name, event_date, default_round_duration_seconds, default_court_count, created_at, updated_at, planned_round_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-  )
-    .bind(
-      eventId,
-      slug,
-      input.data.name,
-      input.data.eventDate ?? timestamp.slice(0, 10),
-      input.data.durationMinutes * 60,
-      1,
-      timestamp,
-      timestamp,
-      input.data.plannedRoundCount,
-    )
-    .run();
+  const eventId = await createEvent(c.env.DB, c.get("principal"), input.data);
+  if (!eventId)
+    return c.json(
+      {
+        error:
+          "Mit diesem Schlüssel kann kein weiteres Turnier erstellt werden. Bitte neu laden.",
+        code: "key_creation_unavailable",
+      },
+      409,
+    );
   return c.json(await loadEvent(c.env.DB, eventId), 201);
 });
 
@@ -274,9 +274,12 @@ admin.delete("/events/:id", async (c) => {
       { error: "Der Veranstaltungsname stimmt nicht überein." },
       400,
     );
-  await c.env.DB.prepare("DELETE FROM events WHERE id = ?")
-    .bind(c.req.param("id"))
-    .run();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE organizer_keys SET revoked_at = ?, updated_at = ? WHERE event_id = ?",
+    ).bind(now(), now(), c.req.param("id")),
+    c.env.DB.prepare("DELETE FROM events WHERE id = ?").bind(c.req.param("id")),
+  ]);
   return c.json({ ok: true });
 });
 

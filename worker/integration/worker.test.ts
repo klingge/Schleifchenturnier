@@ -24,6 +24,8 @@ describe("Worker mit echtem D1-Schema", () => {
     expect(session.status).toBe(200);
     await expect(session.json()).resolves.toEqual({
       authenticated: true,
+      role: "operator",
+      eventId: null,
       csrf: body.csrf,
     });
   });

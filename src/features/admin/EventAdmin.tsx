@@ -56,6 +56,7 @@ import {
   Dialog as UiDialog,
   DialogClose as UiDialogClose,
   DialogContent as UiDialogContent,
+  DialogBody as UiDialogBody,
   DialogFooter as UiDialogFooter,
   DialogHeader as UiDialogHeader,
   DialogTitle as UiDialogTitle,
@@ -123,7 +124,13 @@ import {
   ScoreCorrection,
 } from "@/features/admin/TournamentComponents";
 
-export function EventAdmin({ logout }: { logout: LogoutHandler }) {
+export function EventAdmin({
+  logout,
+  operator = true,
+}: {
+  logout: LogoutHandler;
+  operator?: boolean;
+}) {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const routeLocation = useLocation();
@@ -342,7 +349,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
         <UiCard className="control-header">
           <UiCardHeader>
             <UiCardTitle>
-              <small className="control-event-name">{data.event.name}</small>
+              <h1 className="control-event-name">{data.event.name}</h1>
               <span
                 className={cn(
                   "control-round-title",
@@ -375,25 +382,20 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                 </span>
               </span>
             </UiCardTitle>
-            {activeTab === "dashboard" && (
-              <UiCardDescription>
-                {participantCount} Teilnehmer
-              </UiCardDescription>
-            )}
             <UiCardAction>
               <div className="control-header-actions">
-                {!eventPolicy?.finished &&
+                {activeTab !== "dashboard" &&
+                  !eventPolicy?.finished &&
                   !eventPolicy?.archived &&
+                  round &&
                   round?.state !== "completed" &&
                   round?.state !== "published" && (
-                    <UiBadge variant={!round ? "outline" : "secondary"}>
-                      {!round
-                        ? "Vorbereitung"
-                        : round.state === "results"
-                          ? "Ergebnisse"
-                          : round.state === "paused"
-                            ? "Pausiert"
-                            : "Läuft"}
+                    <UiBadge variant="secondary">
+                      {round.state === "results"
+                        ? "Ergebnisse"
+                        : round.state === "paused"
+                          ? "Pausiert"
+                          : "Läuft"}
                     </UiBadge>
                   )}
                 <QR
@@ -410,13 +412,20 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                       <DotsThreeVertical />
                     </UiButton>
                   </UiDropdownMenuTrigger>
-                  <UiDropdownMenuContent align="end" className="min-w-52">
-                    <UiDropdownMenuGroup>
-                      <UiDropdownMenuItem onSelect={() => nav("/admin")}>
-                        <ArrowLeft /> Zur Übersicht
-                      </UiDropdownMenuItem>
-                    </UiDropdownMenuGroup>
-                    <UiDropdownMenuSeparator />
+                  <UiDropdownMenuContent
+                    align="end"
+                    className="control-action-menu admin-menu min-w-52"
+                  >
+                    {operator && (
+                      <>
+                        <UiDropdownMenuGroup>
+                          <UiDropdownMenuItem onSelect={() => nav("/admin")}>
+                            <ArrowLeft /> Zur Übersicht
+                          </UiDropdownMenuItem>
+                        </UiDropdownMenuGroup>
+                        <UiDropdownMenuSeparator />
+                      </>
+                    )}
                     <UiDropdownMenuGroup>
                       <UiDropdownMenuItem
                         onSelect={() => setLifecycleDialog("settings")}
@@ -424,26 +433,23 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                         <GearSix /> Einstellungen
                       </UiDropdownMenuItem>
                     </UiDropdownMenuGroup>
-                    <UiDropdownMenuSeparator />
-                    <UiDropdownMenuGroup>
-                      <UiDropdownMenuItem
-                        onSelect={() => {
-                          void mutate(`/admin/events/${id}`, {
-                            method: "PATCH",
-                            body: JSON.stringify({
-                              status: "archived",
-                              expectedRevision: data.event.revision,
-                            }),
-                          }).catch(() => {});
-                        }}
-                      >
-                        <Archive /> Archivieren
-                      </UiDropdownMenuItem>
-                      <DeleteEventDialog
-                        event={data.event}
-                        onDeleted={() => nav("/admin")}
-                      />
-                    </UiDropdownMenuGroup>
+                    {operator && (
+                      <>
+                        <UiDropdownMenuSeparator />
+                        <UiDropdownMenuGroup>
+                          <UiDropdownMenuItem
+                            onSelect={() => setLifecycleDialog("archive")}
+                          >
+                            <Archive /> Archivieren
+                          </UiDropdownMenuItem>
+                          <DeleteEventDialog
+                            event={data.event}
+                            className="admin-dialog"
+                            onDeleted={() => nav("/admin")}
+                          />
+                        </UiDropdownMenuGroup>
+                      </>
+                    )}
                     <UiDropdownMenuSeparator />
                     <UiDropdownMenuGroup>
                       <LogoutMenuItem logout={logout} />
@@ -453,19 +459,18 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
               </div>
             </UiCardAction>
           </UiCardHeader>
-          {activeTab === "dashboard" &&
-            !eventPolicy?.archived &&
-            !eventPolicy?.finished &&
-            round &&
-            roundPolicy.clock !== "hidden" && (
-              <UiCardFooter>
-                <Clock
-                  round={round}
-                  mutate={mutate}
-                  startAccent={tournamentAccent === "start"}
-                />
-              </UiCardFooter>
-            )}
+          <UiCardContent className="control-navigation">
+            <nav className="event-tabs" aria-label="Veranstaltungsbereiche">
+              <NavLink to={`/admin/events/${id}/dashboard`}>Dashboard</NavLink>
+              <NavLink to={`/admin/events/${id}/teilnehmer`}>
+                Teilnehmer
+              </NavLink>
+              <NavLink to={`/admin/events/${id}/plaetze`}>Plätze</NavLink>
+              <NavLink to={`/admin/events/${id}/bestenliste`}>
+                Bestenliste
+              </NavLink>
+            </nav>
+          </UiCardContent>
         </UiCard>
         {lifecycleDialog && (
           <EventLifecycleDialog
@@ -475,7 +480,11 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
             onClose={() => setLifecycleDialog(null)}
             save={(path, body) =>
               mutate(path, {
-                method: lifecycleDialog === "settings" ? "PATCH" : "POST",
+                method:
+                  lifecycleDialog === "settings" ||
+                  lifecycleDialog === "archive"
+                    ? "PATCH"
+                    : "POST",
                 body: JSON.stringify(body),
               })
             }
@@ -485,7 +494,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
           open={redrawConfirmOpen}
           onOpenChange={setRedrawConfirmOpen}
         >
-          <UiAlertDialogContent className="w-[calc(100%-2rem)] sm:w-full sm:max-w-sm">
+          <UiAlertDialogContent className="admin-dialog w-[calc(100%-2rem)] sm:w-full sm:max-w-sm">
             <UiAlertDialogHeader>
               <UiAlertDialogTitle>Aufstellung neu auslosen?</UiAlertDialogTitle>
               <UiAlertDialogDescription>
@@ -516,12 +525,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
             }
           />
         )}
-        <nav className="event-tabs" aria-label="Veranstaltungsbereiche">
-          <NavLink to={`/admin/events/${id}/dashboard`}>Dashboard</NavLink>
-          <NavLink to={`/admin/events/${id}/teilnehmer`}>Teilnehmer</NavLink>
-          <NavLink to={`/admin/events/${id}/plaetze`}>Plätze</NavLink>
-          <NavLink to={`/admin/events/${id}/bestenliste`}>Bestenliste</NavLink>
-        </nav>
+
         {error && (
           <UiAlert variant="destructive">
             <UiAlertTitle>Anfrage fehlgeschlagen</UiAlertTitle>
@@ -551,7 +555,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
               )}
             >
               <UiCardHeader>
-                <UiCardTitle role="heading" aria-level={2}>
+                <UiCardTitle as="h2">
                   {eventPolicy?.finished
                     ? "Endwertung"
                     : !round
@@ -575,13 +579,116 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                           ? "Ergebnisse können eingetragen werden, sobald ein Platz fertig ist."
                           : "Die aktuelle Runde ist für die Teilnehmer sichtbar."}
                 </UiCardDescription>
-                {round && resultEntryOpen && (
-                  <UiCardAction>
-                    <UiBadge variant="outline">
-                      {completedResults}/{round.matches.length} erfasst
-                    </UiBadge>
-                  </UiCardAction>
-                )}
+                <UiCardAction className="stage-actions">
+                  {round?.state === "published" &&
+                    !eventPolicy?.archived &&
+                    !eventPolicy?.finished &&
+                    roundPolicy.allowedActions.includes("start") && (
+                      <div className="control-actions">
+                        <UiButton
+                          size="lg"
+                          data-primary-round-action
+                          onClick={() =>
+                            mutate(`/admin/rounds/${round.id}/action`, {
+                              method: "POST",
+                              body: JSON.stringify({ action: "start" }),
+                            })
+                          }
+                        >
+                          <Play data-icon="inline-start" weight="fill" />
+                          {round.round_number === 1
+                            ? "Erste Runde starten"
+                            : "Runde starten"}
+                        </UiButton>
+                        <UiDropdownMenu>
+                          <UiDropdownMenuTrigger asChild>
+                            <UiButton
+                              className="setup-change-trigger"
+                              variant="outline"
+                              disabled={generating}
+                            >
+                              <PencilSimple data-icon="inline-start" />
+                              Aufstellung ändern
+                              <CaretDown data-icon="inline-end" />
+                            </UiButton>
+                          </UiDropdownMenuTrigger>
+                          <UiDropdownMenuContent
+                            align="end"
+                            className="control-action-menu admin-menu min-w-52"
+                          >
+                            <UiDropdownMenuItem
+                              onSelect={() => setManualEditorOpen(true)}
+                            >
+                              <PencilSimple /> Manuell bearbeiten
+                            </UiDropdownMenuItem>
+                            <UiDropdownMenuItem
+                              onSelect={() => setRedrawConfirmOpen(true)}
+                            >
+                              <Shuffle /> Neu auslosen
+                            </UiDropdownMenuItem>
+                          </UiDropdownMenuContent>
+                        </UiDropdownMenu>
+                      </div>
+                    )}
+                  {eventPolicy?.canGenerate && round?.state !== "published" && (
+                    <div className="round-creation-actions">
+                      <UiButton
+                        className="draw-action"
+                        size="lg"
+                        disabled={
+                          generating || activePlayers < 4 || activeCourts === 0
+                        }
+                        onClick={generate}
+                      >
+                        <Shuffle data-icon="inline-start" />
+                        <span className="draw-action-label">
+                          {round?.state === "completed"
+                            ? "Nächste Runde auslosen"
+                            : "Erste Runde auslosen"}
+                        </span>
+                      </UiButton>
+                      <UiButton
+                        className="manual-creation-action"
+                        size="lg"
+                        variant="outline"
+                        disabled={
+                          generating || activePlayers < 4 || activeCourts === 0
+                        }
+                        onClick={() => setManualEditorOpen(true)}
+                      >
+                        <PencilSimple data-icon="inline-start" />
+                        Manuell zusammenstellen
+                      </UiButton>
+                    </div>
+                  )}
+                  {eventPolicy?.canResume && (
+                    <UiButton
+                      size="lg"
+                      onClick={() => setLifecycleDialog("resume")}
+                    >
+                      <Play data-icon="inline-start" /> Turnier fortsetzen
+                    </UiButton>
+                  )}
+                  {round &&
+                    !eventPolicy?.archived &&
+                    !eventPolicy?.finished &&
+                    roundPolicy.clock !== "hidden" && (
+                      <Clock
+                        round={round}
+                        mutate={mutate}
+                        startAccent={tournamentAccent === "start"}
+                      />
+                    )}
+                  {eventPolicy?.canFinish && (
+                    <UiButton
+                      className="finish-action"
+                      variant="ghost"
+                      onClick={() => setLifecycleDialog("finish")}
+                    >
+                      <Trophy data-icon="inline-start" /> Turnier beenden
+                    </UiButton>
+                  )}
+                </UiCardAction>
               </UiCardHeader>
               <UiCardContent>
                 {generating && (
@@ -608,58 +715,11 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                     <Leaderboard players={rankedPlayers} />
                   </div>
                 )}
-                {round?.state === "published" &&
-                  !eventPolicy?.archived &&
-                  !eventPolicy?.finished &&
-                  roundPolicy.allowedActions.includes("start") && (
-                    <div className="control-actions">
-                      <UiButton
-                        size="lg"
-                        data-primary-round-action
-                        onClick={() =>
-                          mutate(`/admin/rounds/${round.id}/action`, {
-                            method: "POST",
-                            body: JSON.stringify({ action: "start" }),
-                          })
-                        }
-                      >
-                        <Play data-icon="inline-start" weight="fill" />
-                        {round.round_number === 1
-                          ? "Erste Runde starten"
-                          : "Runde starten"}
-                      </UiButton>
-                      <UiDropdownMenu>
-                        <UiDropdownMenuTrigger asChild>
-                          <UiButton
-                            className="setup-change-trigger"
-                            variant="outline"
-                            disabled={generating}
-                          >
-                            <PencilSimple data-icon="inline-start" />
-                            Aufstellung ändern
-                            <CaretDown data-icon="inline-end" />
-                          </UiButton>
-                        </UiDropdownMenuTrigger>
-                        <UiDropdownMenuContent align="end" className="min-w-52">
-                          <UiDropdownMenuItem
-                            onSelect={() => setManualEditorOpen(true)}
-                          >
-                            <PencilSimple /> Manuell bearbeiten
-                          </UiDropdownMenuItem>
-                          <UiDropdownMenuItem
-                            onSelect={() => setRedrawConfirmOpen(true)}
-                          >
-                            <Shuffle /> Neu auslosen
-                          </UiDropdownMenuItem>
-                        </UiDropdownMenuContent>
-                      </UiDropdownMenu>
-                    </div>
-                  )}
                 {round && roundPolicy.configurationLocked && (
                   <>
                     {sittingOutPlayers.length > 0 && (
-                      <UiAlert className="sitting-out">
-                        <UiAlertTitle>Setzen diese Runde aus</UiAlertTitle>
+                      <UiAlert className="sitting-out" role="note">
+                        <UiAlertTitle>Diese Runde pausieren</UiAlertTitle>
                         <UiAlertDescription>
                           {sittingOutPlayers.map((player) => (
                             <UiBadge key={player.id} variant="outline">
@@ -688,101 +748,45 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                   </>
                 )}
               </UiCardContent>
-              <UiCardFooter
-                className={cn(
-                  "control-stage-footer",
-                  eventPolicy?.canGenerate &&
-                    round?.state !== "published" &&
-                    "round-creation-footer",
-                  roundPolicy.resultAccess !== "closed" &&
-                    "floating-stage-footer",
-                  resultEntryOpen && "results-progress-footer",
-                )}
-              >
-                {eventPolicy?.canGenerate && round?.state !== "published" && (
-                  <div className="round-creation-actions">
-                    <UiButton
-                      className="draw-action"
-                      size="lg"
-                      disabled={
-                        generating || activePlayers < 4 || activeCourts === 0
-                      }
-                      onClick={generate}
-                    >
-                      <Shuffle data-icon="inline-start" />
-                      <span className="draw-action-label">
-                        {round?.state === "completed"
-                          ? "Nächste Runde auslosen"
-                          : "Erste Runde auslosen"}
-                      </span>
-                    </UiButton>
-                    <UiButton
-                      className="manual-creation-action"
-                      size="lg"
-                      variant="outline"
-                      disabled={
-                        generating || activePlayers < 4 || activeCourts === 0
-                      }
-                      onClick={() => setManualEditorOpen(true)}
-                    >
-                      <PencilSimple data-icon="inline-start" />
-                      Manuell zusammenstellen
-                    </UiButton>
-                  </div>
-                )}
-                {eventPolicy?.canResume && (
-                  <UiButton
-                    size="lg"
-                    onClick={() => setLifecycleDialog("resume")}
-                  >
-                    <Play data-icon="inline-start" /> Turnier fortsetzen
-                  </UiButton>
-                )}
-                {eventPolicy?.canFinish && (
-                  <UiButton
-                    className="finish-action"
-                    variant="ghost"
-                    onClick={() => setLifecycleDialog("finish")}
-                  >
-                    <Trophy data-icon="inline-start" /> Turnier beenden
-                  </UiButton>
-                )}
-                {round && resultEntryOpen && (
-                  <>
-                    <div className="result-progress" aria-live="polite">
-                      <div>
-                        <strong>
-                          {completedResults} von {round.matches.length}{" "}
-                          Ergebnissen erfasst
-                        </strong>
-                        <span>
-                          {roundCanComplete
-                            ? "Alle Ergebnisse sind gespeichert."
-                            : "Alle Plätze vollständig eintragen."}
-                        </span>
+              {resultEntryOpen && (
+                <UiCardFooter className="control-stage-footer results-progress-footer">
+                  {round && resultEntryOpen && (
+                    <>
+                      <div className="result-progress" aria-live="polite">
+                        <div>
+                          <strong>
+                            {completedResults} von {round.matches.length}{" "}
+                            Ergebnissen erfasst
+                          </strong>
+                          <span>
+                            {roundCanComplete
+                              ? "Alle Ergebnisse sind gespeichert."
+                              : "Alle Plätze vollständig eintragen."}
+                          </span>
+                        </div>
+                        <UiProgress
+                          value={
+                            round.matches.length
+                              ? (completedResults / round.matches.length) * 100
+                              : 0
+                          }
+                          aria-label={`${completedResults} von ${round.matches.length} Ergebnissen erfasst`}
+                        />
                       </div>
-                      <UiProgress
-                        value={
-                          round.matches.length
-                            ? (completedResults / round.matches.length) * 100
-                            : 0
-                        }
-                        aria-label={`${completedResults} von ${round.matches.length} Ergebnissen erfasst`}
-                      />
-                    </div>
-                    <UiButton
-                      size="lg"
-                      disabled={!roundCanComplete}
-                      onClick={roundResults.completion.run}
-                    >
-                      <Check data-icon="inline-start" />{" "}
-                      {eventPolicy?.finalRound
-                        ? "Runde und Turnier abschließen"
-                        : "Runde abschließen"}
-                    </UiButton>
-                  </>
-                )}
-              </UiCardFooter>
+                      <UiButton
+                        size="lg"
+                        disabled={!roundCanComplete}
+                        onClick={roundResults.completion.run}
+                      >
+                        <Check data-icon="inline-start" />{" "}
+                        {eventPolicy?.finalRound
+                          ? "Runde und Turnier abschließen"
+                          : "Runde abschließen"}
+                      </UiButton>
+                    </>
+                  )}
+                </UiCardFooter>
+              )}
             </UiCard>
           )}
           <section className="control-tab-panel">
@@ -800,7 +804,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
             {activeTab === "teilnehmer" && (
               <UiCard className="control-participants">
                 <UiCardHeader>
-                  <UiCardTitle>Teilnehmer</UiCardTitle>
+                  <UiCardTitle as="h2">Teilnehmer</UiCardTitle>
                   {activePlayers !== participantCount && (
                     <UiCardDescription>
                       {activePlayers} von {participantCount} aktiv
@@ -997,7 +1001,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                     if (!open) setCorrectionPlayerId("");
                   }}
                 >
-                  <UiDialogContent className="correction-dialog sm:max-w-3xl">
+                  <UiDialogContent className="admin-dialog correction-dialog viewport-dialog sm:max-w-3xl">
                     <UiDialogHeader>
                       <UiDialogTitle>
                         {configurationLocked
@@ -1005,46 +1009,50 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
                           : "Teilnehmer bearbeiten"}
                       </UiDialogTitle>
                     </UiDialogHeader>
-                    {correctionPlayer && (
-                      <>
-                        <PlayerEditorHeader
-                          player={correctionPlayer}
-                          matchCount={correctionMatches.length}
-                          editable={!configurationLocked}
-                          save={(name) =>
-                            mutate(`/admin/players/${correctionPlayer.id}`, {
-                              method: "PATCH",
-                              body: JSON.stringify({ name }),
-                            })
-                          }
-                        />
-                        <div className="correction-section-heading">
-                          <div>
-                            <h3>Spielhistorie</h3>
-                            <p>Abgeschlossene Spiele, neueste Runde zuerst.</p>
+                    <UiDialogBody>
+                      {correctionPlayer && (
+                        <>
+                          <PlayerEditorHeader
+                            player={correctionPlayer}
+                            matchCount={correctionMatches.length}
+                            editable={!configurationLocked}
+                            save={(name) =>
+                              mutate(`/admin/players/${correctionPlayer.id}`, {
+                                method: "PATCH",
+                                body: JSON.stringify({ name }),
+                              })
+                            }
+                          />
+                          <div className="correction-section-heading">
+                            <div>
+                              <h3>Spielhistorie</h3>
+                              <p>
+                                Abgeschlossene Spiele, neueste Runde zuerst.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        {correctionMatches.length ? (
-                          <div className="correction-list">
-                            {correctionMatches.map(({ round, match }) => (
-                              <ScoreCorrection
-                                key={match.id}
-                                round={round}
-                                match={match}
-                                players={pm}
-                                playerId={correctionPlayer.id}
-                                mutate={mutate}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="correction-empty">
-                            Für diesen Teilnehmer gibt es noch keinen früheren
-                            Spielstand.
-                          </p>
-                        )}
-                      </>
-                    )}
+                          {correctionMatches.length ? (
+                            <div className="correction-list">
+                              {correctionMatches.map(({ round, match }) => (
+                                <ScoreCorrection
+                                  key={match.id}
+                                  round={round}
+                                  match={match}
+                                  players={pm}
+                                  playerId={correctionPlayer.id}
+                                  mutate={mutate}
+                                />
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="correction-empty">
+                              Für diesen Teilnehmer gibt es noch keinen früheren
+                              Spielstand.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </UiDialogBody>
                     <UiDialogFooter>
                       <UiDialogClose asChild>
                         <UiButton variant="outline">Schließen</UiButton>
@@ -1057,7 +1065,7 @@ export function EventAdmin({ logout }: { logout: LogoutHandler }) {
             {activeTab === "bestenliste" && (
               <UiCard className="control-leaderboard">
                 <UiCardHeader>
-                  <UiCardTitle>Bestenliste</UiCardTitle>
+                  <UiCardTitle as="h2">Bestenliste</UiCardTitle>
                   <UiCardAction>
                     <Trophy />
                   </UiCardAction>

@@ -7,6 +7,7 @@ import {
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuGroup as UiDropdownMenuGroup,
   DropdownMenuTrigger as UiDropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -67,7 +68,9 @@ export function Shell({
               </UiButton>
             </UiDropdownMenuTrigger>
             <UiDropdownMenuContent align="end" className="min-w-44">
-              <LogoutMenuItem logout={logout} />
+              <UiDropdownMenuGroup>
+                <LogoutMenuItem logout={logout} />
+              </UiDropdownMenuGroup>
             </UiDropdownMenuContent>
           </UiDropdownMenu>
         )}
